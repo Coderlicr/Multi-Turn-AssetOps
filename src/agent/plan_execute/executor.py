@@ -15,6 +15,9 @@ from typing import Any
 
 from llm import LLMBackend
 from .models import Plan, PlanStep, StepResult
+from ..artifacts import Artifact, ArtifactRegistry, infer_type, truncate_for_llm
+from ..models import PlanStepV2, PlanV2, StepResultV2, TaskStatus
+from ..validator import ValidationResult, validate_step
 
 _log = logging.getLogger(__name__)
 
@@ -192,6 +195,147 @@ class Executor:
                 tool=step.tool,
                 tool_args=step.tool_args,
             )
+
+    # ── Phase 1: execute with validation, retry, and artifact tracking ───────
+
+    async def execute_plan_v2(
+        self,
+        plan_v2: PlanV2,
+        question: str,
+        registry: ArtifactRegistry,
+    ) -> list[StepResultV2]:
+        """Execute plan with step validation, retry, and artifact tracking.
+
+        Falls back to the same MCP tool calling as execute_plan, but wraps
+        each step with:
+          - Artifact registration on success
+          - Rule-based validation
+          - Retry on failure (up to step.max_retries)
+
+        Returns a list of StepResultV2 (Pydantic models).
+        """
+        # Build a legacy Plan for tool-schema fetching (reuse existing infra)
+        legacy_steps = [
+            PlanStep(
+                step_number=s.step_number,
+                task=s.task,
+                server=s.server,
+                tool=s.tool,
+                tool_args=s.tool_args,
+                dependencies=s.dependencies,
+                expected_output=s.expected_output,
+            )
+            for s in plan_v2.steps
+        ]
+        legacy_plan = Plan(steps=legacy_steps, raw="")
+
+        # Pre-fetch tool schemas
+        server_names = {s.server for s in plan_v2.steps}
+        tool_schemas: dict[str, dict[str, str]] = {}
+        for name in server_names:
+            path = self._server_paths.get(name)
+            if path is None:
+                continue
+            try:
+                tools = await _list_tools(path)
+                tool_schemas[name] = {
+                    t["name"]: ", ".join(
+                        f"{p['name']}: {p['type']}{'?' if not p['required'] else ''}"
+                        for p in t.get("parameters", [])
+                    )
+                    for t in tools
+                }
+            except Exception:  # noqa: BLE001
+                tool_schemas[name] = {}
+
+        # Resolve execution order from the legacy plan
+        ordered_legacy = legacy_plan.resolved_order()
+        step_map = {s.step_number: s for s in plan_v2.steps}
+
+        context: dict[int, StepResult] = {}
+        results: list[StepResultV2] = []
+
+        for legacy_step in ordered_legacy:
+            v2_step = step_map[legacy_step.step_number]
+            v2_step.status = TaskStatus.RUNNING
+
+            schema = tool_schemas.get(v2_step.server, {}).get(v2_step.tool, "")
+            attempt = 0
+            last_error = ""
+
+            while attempt <= v2_step.max_retries:
+                attempt += 1
+                legacy_result = await self.execute_step(
+                    legacy_step, context, question, tool_schema=schema
+                )
+
+                # Wrap into V2
+                result_v2 = StepResultV2(
+                    step_number=v2_step.step_number,
+                    task=v2_step.task,
+                    server=v2_step.server,
+                    response=legacy_result.response,
+                    error=legacy_result.error,
+                    tool=legacy_result.tool,
+                    tool_args=legacy_result.tool_args,
+                    status=TaskStatus.SUCCESS if legacy_result.success else TaskStatus.FAILED,
+                    attempts=attempt,
+                )
+
+                # Build artifact (even for failures, for lineage tracking)
+                dep_artifact_ids = []
+                for dep_num in v2_step.dependencies:
+                    dep_art = registry.get_by_step(dep_num)
+                    if dep_art:
+                        dep_artifact_ids.append(dep_art.id)
+
+                artifact = Artifact(
+                    artifact_type=infer_type(v2_step.tool),
+                    created_by_step=v2_step.step_number,
+                    created_by_server=v2_step.server,
+                    summary=truncate_for_llm(legacy_result.response, max_chars=200),
+                    raw_data=legacy_result.response,
+                    depends_on=dep_artifact_ids,
+                )
+
+                # Validate
+                validation = validate_step(v2_step, result_v2, artifact)
+
+                if validation.passed:
+                    registry.register(artifact)
+                    result_v2.artifact_id = artifact.id
+                    result_v2.status = TaskStatus.SUCCESS
+                    v2_step.status = TaskStatus.SUCCESS
+                    context[v2_step.step_number] = legacy_result
+                    _log.info("Step %d OK (attempt %d).", v2_step.step_number, attempt)
+                    break
+
+                last_error = validation.reason
+                _log.warning(
+                    "Step %d validation failed (attempt %d/%d): %s",
+                    v2_step.step_number,
+                    attempt,
+                    v2_step.max_retries + 1,
+                    validation.reason,
+                )
+
+                if validation.action == "replan" or attempt > v2_step.max_retries:
+                    # Max retries exhausted or replan requested
+                    result_v2.error = last_error
+                    result_v2.status = TaskStatus.FAILED
+                    v2_step.status = TaskStatus.FAILED
+                    # Still register artifact for lineage (failed)
+                    registry.register(artifact)
+                    result_v2.artifact_id = artifact.id
+                    # Add to context so downstream steps see the failure
+                    context[v2_step.step_number] = legacy_result
+                    break
+
+                # retry: continue loop
+
+            results.append(result_v2)
+
+        return results
 
 
 # ── arg resolution ────────────────────────────────────────────────────────────
