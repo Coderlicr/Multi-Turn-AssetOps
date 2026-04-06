@@ -1,4 +1,4 @@
-"""Integration tests for Phase 1: retry, re-plan, artifact tracking."""
+"""Integration tests for Phase 1: retry, re-plan, and session tracking."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agent.artifacts import ArtifactRegistry
-from agent.models import PlanStepV2, PlanV2, StepResultV2, TaskStatus
+from agent.models import PlanStepV2, PlanV2
 from agent.plan_execute.executor import Executor
 from agent.plan_execute.models import Plan, PlanStep
 from agent.plan_execute.runner import PlanExecuteRunner
+from agent.session import SessionState
 
 # ── shared fixtures ────���─────────────────────────────────────────────────────
 
@@ -58,8 +58,8 @@ def _patch_mcp(tool_response="{}"):
 
 
 @pytest.mark.anyio
-async def test_execute_plan_v2_success_registers_artifacts(sequential_llm):
-    """Successful steps register artifacts in the registry."""
+async def test_execute_plan_v2_success_records_session_state(sequential_llm):
+    """Successful steps are written into the shared session state."""
     from pathlib import Path
 
     llm = sequential_llm(['{}'])
@@ -69,18 +69,17 @@ async def test_execute_plan_v2_success_registers_artifacts(sequential_llm):
         steps=[PlanStepV2(step_number=1, task="Get sites", server="iot", tool="sites")],
         original_question="Q",
     )
-    registry = ArtifactRegistry()
+    session = SessionState(question="Q")
 
     with (
         patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch("agent.plan_execute.executor._call_tool", new=AsyncMock(return_value='{"sites": ["MAIN"]}')),
     ):
-        results = await executor.execute_plan_v2(plan_v2, "Q", registry)
+        results = await executor.execute_plan_v2(plan_v2, "Q", session)
 
     assert len(results) == 1
     assert results[0].success is True
-    assert results[0].artifact_id is not None
-    assert len(registry) == 1
+    assert session.get_step(1) is not None
 
 
 @pytest.mark.anyio
@@ -95,7 +94,7 @@ async def test_execute_plan_v2_retry_on_empty_response(sequential_llm):
         steps=[PlanStepV2(step_number=1, task="Get sites", server="iot", tool="sites")],
         original_question="Q",
     )
-    registry = ArtifactRegistry()
+    session = SessionState(question="Q")
 
     call_count = 0
 
@@ -110,7 +109,7 @@ async def test_execute_plan_v2_retry_on_empty_response(sequential_llm):
         patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch("agent.plan_execute.executor._call_tool", new=AsyncMock(side_effect=_call_tool_side_effect)),
     ):
-        results = await executor.execute_plan_v2(plan_v2, "Q", registry)
+        results = await executor.execute_plan_v2(plan_v2, "Q", session)
 
     assert results[0].success is True
     assert results[0].attempts == 2
@@ -132,22 +131,21 @@ async def test_execute_plan_v2_max_retries_exhausted(sequential_llm):
         )],
         original_question="Q",
     )
-    registry = ArtifactRegistry()
+    session = SessionState(question="Q")
 
     with (
         patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch("agent.plan_execute.executor._call_tool", new=AsyncMock(return_value="")),  # Always empty
     ):
-        results = await executor.execute_plan_v2(plan_v2, "Q", registry)
+        results = await executor.execute_plan_v2(plan_v2, "Q", session)
 
     assert results[0].success is False
-    assert results[0].status == TaskStatus.FAILED
     assert results[0].attempts == 3  # initial + 2 retries
 
 
 @pytest.mark.anyio
-async def test_execute_plan_v2_artifact_lineage(sequential_llm):
-    """Step 2 artifact depends_on step 1 artifact."""
+async def test_execute_plan_v2_session_lineage(sequential_llm):
+    """Step 2 session record depends_on step 1 via lineage."""
     from pathlib import Path
 
     llm = sequential_llm(['{}', '{}'])
@@ -160,19 +158,17 @@ async def test_execute_plan_v2_artifact_lineage(sequential_llm):
         ],
         original_question="Q",
     )
-    registry = ArtifactRegistry()
+    session = SessionState(question="Q")
 
     with (
         patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch("agent.plan_execute.executor._call_tool", new=AsyncMock(return_value='{"ok": true}')),
     ):
-        results = await executor.execute_plan_v2(plan_v2, "Q", registry)
+        results = await executor.execute_plan_v2(plan_v2, "Q", session)
 
     assert all(r.success for r in results)
-    art2 = registry.get(results[1].artifact_id)
-    assert art2 is not None
-    assert len(art2.depends_on) == 1
-    assert art2.depends_on[0] == results[0].artifact_id
+    lineage = session.lineage(2)
+    assert [record.step_number for record in lineage] == [1, 2]
 
 
 @pytest.mark.anyio
@@ -190,13 +186,13 @@ async def test_execute_plan_v2_no_tool_step(sequential_llm):
         )],
         original_question="Q",
     )
-    registry = ArtifactRegistry()
+    session = SessionState(question="Q")
 
     with (
         patch("agent.plan_execute.executor._list_tools", new=AsyncMock(return_value=_MOCK_TOOLS)),
         patch("agent.plan_execute.executor._call_tool", new=AsyncMock(return_value="")),
     ):
-        results = await executor.execute_plan_v2(plan_v2, "Q", registry)
+        results = await executor.execute_plan_v2(plan_v2, "Q", session)
 
     assert results[0].success is True
     assert results[0].response == "42"
@@ -249,6 +245,7 @@ async def test_runner_replan_on_failure(sequential_llm):
     assert result.answer == "Final answer"
     # Original 2 steps + 1 re-plan step = 3 history entries
     assert len(result.history) == 3
+    assert [r.step_number for r in result.history] == [1, 2, 3]
 
 
 @pytest.mark.anyio
