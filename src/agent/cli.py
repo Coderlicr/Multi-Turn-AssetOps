@@ -14,9 +14,11 @@ import asyncio
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+_AUTO_SAVE_OUTPUT = "__AUTO_SAVE_OUTPUT__"
 
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
@@ -96,6 +98,16 @@ examples:
         action="store_true",
         help="Enter a simple REPL and retain minimal session state across turns.",
     )
+    parser.add_argument(
+        "--save-output",
+        nargs="?",
+        const=_AUTO_SAVE_OUTPUT,
+        metavar="PATH",
+        help=(
+            "Persist results to a file as JSONL, one JSON object per line. "
+            "If PATH is omitted, defaults to logs/log_<timestamp>.jsonl."
+        ),
+    )
     return parser
 
 
@@ -154,6 +166,7 @@ async def _run(args: argparse.Namespace) -> None:
     server_paths = _parse_servers(args.servers)
     runner = PlanExecuteRunner(llm=llm, server_paths=server_paths)
     session = SessionState()
+    args.save_output_path = _prepare_output_path(args)
 
     if not args.multi_turn:
         result = await runner.run(args.question)
@@ -181,36 +194,12 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def _render_result(result, args: argparse.Namespace) -> None:
+    output = _result_to_output(result)
+
+    if args.save_output_path is not None:
+        _write_output_file(args.save_output_path, output, multi_turn=args.multi_turn)
+
     if args.output_json:
-        output = {
-            "question": result.question,
-            "answer": result.answer,
-            "plan": [
-                {
-                    "step": s.step_number,
-                    "task": s.task,
-                    "server": s.server,
-                    "tool": s.tool,
-                    "tool_args": s.tool_args,
-                    "dependencies": s.dependencies,
-                    "expected_output": s.expected_output,
-                }
-                for s in result.plan.steps
-            ],
-            "history": [
-                {
-                    "step": r.step_number,
-                    "task": r.task,
-                    "server": r.server,
-                    "tool": r.tool,
-                    "tool_args": r.tool_args,
-                    "response": r.response,
-                    "error": r.error,
-                    "success": r.success,
-                }
-                for r in result.history
-            ],
-        }
         print(json.dumps(output, indent=2))
         return
 
@@ -236,6 +225,61 @@ def _render_result(result, args: argparse.Namespace) -> None:
     _print_section("Answer")
     print(result.answer)
     print()
+
+
+def _result_to_output(result) -> dict:
+    return {
+        "question": result.question,
+        "answer": result.answer,
+        "plan": [
+            {
+                "step": s.step_number,
+                "task": s.task,
+                "server": s.server,
+                "tool": s.tool,
+                "tool_args": s.tool_args,
+                "dependencies": s.dependencies,
+                "expected_output": s.expected_output,
+            }
+            for s in result.plan.steps
+        ],
+        "history": [
+            {
+                "step": r.step_number,
+                "task": r.task,
+                "server": r.server,
+                "tool": r.tool,
+                "tool_args": r.tool_args,
+                "response": r.response,
+                "error": r.error,
+                "success": r.success,
+            }
+            for r in result.history
+        ],
+    }
+
+
+def _write_output_file(path: Path, output: dict, multi_turn: bool) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if multi_turn else "w"
+    with path.open(mode, encoding="utf-8") as f:
+        f.write(json.dumps(output, ensure_ascii=True))
+        f.write("\n")
+
+
+def _resolve_output_path(raw_path: str, multi_turn: bool) -> Path:
+    if raw_path != _AUTO_SAVE_OUTPUT:
+        return Path(raw_path)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    del multi_turn
+    return Path("logs") / f"log_{timestamp}.jsonl"
+
+
+def _prepare_output_path(args: argparse.Namespace) -> Path | None:
+    if not args.save_output:
+        return None
+    return _resolve_output_path(args.save_output, multi_turn=args.multi_turn)
 
 
 def main() -> None:
