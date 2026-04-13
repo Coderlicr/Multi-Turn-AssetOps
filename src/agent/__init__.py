@@ -4,6 +4,7 @@ from .runner import AgentRunner
 from .plan_execute.runner import PlanExecuteRunner
 from .models import OrchestratorResult
 from .plan_execute.models import Plan, PlanStep, StepResult
+from .session import SessionState, TurnRecord
 
 __all__ = [
     "AgentRunner",
@@ -12,4 +13,6 @@ __all__ = [
     "Plan",
     "PlanStep",
     "StepResult",
+    "SessionState",
+    "TurnRecord",
 ]

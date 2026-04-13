@@ -21,6 +21,7 @@ from .executor import Executor
 from .planner import Planner
 from ..models import OrchestratorResult
 from ..runner import AgentRunner
+from ..session import SessionState
 
 _log = logging.getLogger(__name__)
 
@@ -67,7 +68,11 @@ class PlanExecuteRunner(AgentRunner):
         self._planner = Planner(llm)
         self._executor = Executor(llm, server_paths)
 
-    async def run(self, question: str) -> OrchestratorResult:
+    async def run(
+        self,
+        question: str,
+        session: SessionState | None = None,
+    ) -> OrchestratorResult:
         """Run the full plan-execute loop for a question.
 
         Steps:
@@ -78,22 +83,29 @@ class PlanExecuteRunner(AgentRunner):
 
         Args:
             question: The user question to answer.
+            session: Optional conversation state reused across turns.
 
         Returns:
             OrchestratorResult with the final answer, the generated plan, and
             the per-step execution history.
         """
+        effective_question = (
+            session.build_question(question) if session is not None else question
+        )
+        print("[DEBUG] Question of this turn:")
+        print(effective_question)
+
         # 1. Discover
         _log.info("Discovering server capabilities...")
         server_descriptions = await self._executor.get_server_descriptions()
 
         # 2. Plan
         _log.info("Planning...")
-        plan = self._planner.generate_plan(question, server_descriptions)
+        plan = self._planner.generate_plan(effective_question, server_descriptions)
         _log.info("Plan has %d step(s).", len(plan.steps))
 
         # 3. Execute
-        history = await self._executor.execute_plan(plan, question)
+        history = await self._executor.execute_plan(plan, effective_question)
 
         # 4. Summarise
         _log.info("Summarising...")
@@ -106,9 +118,12 @@ class PlanExecuteRunner(AgentRunner):
             _SUMMARIZE_PROMPT.format(question=question, results=results_text)
         )
 
-        return OrchestratorResult(
+        result = OrchestratorResult(
             question=question,
             answer=answer,
             plan=plan,
             history=history,
         )
+        if session is not None:
+            session.record_turn(question=question, answer=answer, history=history)
+        return result

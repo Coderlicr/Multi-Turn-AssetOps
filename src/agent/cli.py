@@ -45,12 +45,13 @@ environment variables:
 
 examples:
   plan-execute "What assets are at site MAIN?"
+  plan-execute --multi-turn "What assets are at site MAIN?"
   plan-execute --model-id watsonx/ibm/granite-3-3-8b-instruct --show-plan "List sensors"
   plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the failure modes?"
   plan-execute --verbose --show-history --json "How many IoT observations exist for CH-1?"
 """,
     )
-    parser.add_argument("question", help="The question to answer.")
+    parser.add_argument("question", nargs="?", help="The question to answer.")
     parser.add_argument(
         "--model-id",
         default=_DEFAULT_MODEL,
@@ -89,6 +90,11 @@ examples:
         "--verbose",
         action="store_true",
         help="Show INFO-level progress logs on stderr (default: WARNING+ only).",
+    )
+    parser.add_argument(
+        "--multi-turn",
+        action="store_true",
+        help="Enter a simple REPL and retain minimal session state across turns.",
     )
     return parser
 
@@ -142,12 +148,39 @@ def _print_section(title: str) -> None:
 
 async def _run(args: argparse.Namespace) -> None:
     from agent.plan_execute.runner import PlanExecuteRunner
+    from agent.session import SessionState
 
     llm = _build_llm(args.model_id)
     server_paths = _parse_servers(args.servers)
     runner = PlanExecuteRunner(llm=llm, server_paths=server_paths)
-    result = await runner.run(args.question)
+    session = SessionState()
 
+    if not args.multi_turn:
+        result = await runner.run(args.question)
+        _render_result(result, args)
+        return
+
+    if args.question:
+        result = await runner.run(args.question, session=session)
+        _render_result(result, args)
+
+    while True:
+        try:
+            question = input("> ").strip()
+        except EOFError:
+            print()
+            break
+
+        if not question:
+            continue
+        if question.lower() in {"exit", "quit"}:
+            break
+
+        result = await runner.run(question, session=session)
+        _render_result(result, args)
+
+
+def _render_result(result, args: argparse.Namespace) -> None:
     if args.output_json:
         output = {
             "question": result.question,
@@ -208,7 +241,12 @@ async def _run(args: argparse.Namespace) -> None:
 def main() -> None:
     from dotenv import load_dotenv
     load_dotenv()
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args = parser.parse_args()
+    if not args.question and not args.multi_turn:
+        parser.error("the following arguments are required: question")
+    if args.multi_turn and args.output_json:
+        parser.error("--json is not supported with --multi-turn")
     _setup_logging(args.verbose)
     asyncio.run(_run(args))
 

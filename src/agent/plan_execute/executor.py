@@ -88,11 +88,22 @@ class Executor:
     async def execute_plan(self, plan: Plan, question: str) -> list[StepResult]:
         """Execute all plan steps in dependency order."""
         ordered = plan.resolved_order()
-        total = len(ordered)
+        executable_steps: list[PlanStep] = []
+        # ignore invalid plan steps (e.g. server="none")
+        for step in ordered:
+            if step.server not in self._server_paths:
+                _log.info(
+                    "Skipping step %d [%s]: unknown server.",
+                    step.step_number,
+                    step.server,
+                )
+                continue
+            executable_steps.append(step)
+        total = len(executable_steps)
 
         # Pre-fetch tool schemas for all servers referenced in the plan so that
         # _resolve_args_with_llm can include exact parameter names in its prompt.
-        server_names = {step.server for step in ordered}
+        server_names = {step.server for step in executable_steps}
         tool_schemas: dict[str, dict[str, str]] = {}  # server -> {tool_name -> sig}
         for name in server_names:
             path = self._server_paths.get(name)
@@ -112,7 +123,7 @@ class Executor:
 
         context: dict[int, StepResult] = {}
         results: list[StepResult] = []
-        for step in ordered:
+        for step in executable_steps:
             _log.info(
                 "Step %d/%d [%s]: %s",
                 step.step_number,
