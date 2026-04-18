@@ -233,13 +233,23 @@ class Executor:
                 tool=step.tool,
                 tool_args=resolved_args,
             )
+        except TimeoutError:
+            return StepResult(
+                step_number=step.step_number,
+                task=step.task,
+                server=step.server,
+                response="",
+                error=f"Tool call timed out after {_TOOL_CALL_TIMEOUT}s",
+                tool=step.tool,
+                tool_args=step.tool_args,
+            )
         except Exception as exc:  # noqa: BLE001
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
                 server=step.server,
                 response="",
-                error=str(exc),
+                error=str(exc) or repr(exc),
                 tool=step.tool,
                 tool_args=step.tool_args,
             )
@@ -258,8 +268,13 @@ async def _resolve_args_with_llm(
 ) -> dict:
     """Generate tool arguments from the task description and prior step results."""
     from datetime import date
+    _MAX_CTX_CHARS = 2000
     context_text = "\n".join(
-        f"Step {n}: {r.response}" for n, r in sorted(context.items())
+        f"Step {n}: " + (
+            r.response[:_MAX_CTX_CHARS] + "... [truncated]"
+            if len(r.response) > _MAX_CTX_CHARS else r.response
+        )
+        for n, r in sorted(context.items())
     )
     prompt = (
         _ARG_RESOLUTION_PROMPT
@@ -373,7 +388,7 @@ async def _list_tools(server_path: Path | str) -> list[dict]:
             return tools
 
 
-_TOOL_CALL_TIMEOUT = 60  # seconds
+_TOOL_CALL_TIMEOUT = 300  # seconds
 
 
 async def _call_tool(server_path: Path | str, tool_name: str, args: dict) -> str:

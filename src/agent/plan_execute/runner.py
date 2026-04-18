@@ -109,9 +109,14 @@ class PlanExecuteRunner(AgentRunner):
 
         # 4. Summarise
         _log.info("Summarising...")
+        _MAX_RESPONSE_CHARS = 2000
         results_text = "\n\n".join(
             f"Step {r.step_number} — {r.task} (server: {r.server}):\n"
-            + (r.response if r.success else f"ERROR: {r.error}")
+            + (
+                (r.response[:_MAX_RESPONSE_CHARS] + "... [truncated]"
+                 if len(r.response) > _MAX_RESPONSE_CHARS else r.response)
+                if r.success else f"ERROR: {r.error}"
+            )
             for r in history
         )
         answer = self._llm.generate(
