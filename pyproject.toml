@@ -2,6 +2,9 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent", "src/llm"]
 
@@ -18,10 +21,12 @@ dependencies = [
     "pendulum>=3.2.0",
     "pydantic>=2.12.5",
     "requests>=2.32.5",
-    "numpy>=1.24",
+    "numpy>=1.24,<2.0",
+    "granite-tsfm @ git+https://github.com/ibm-granite/granite-tsfm",
     "pandas>=2.0",
     "pyyaml>=6.0",
     "litellm>=1.0",
+    "huggingface-hub>=0.34.0,<1.0",
     "python-dotenv>=1.0",
     "scipy>=1.10.0",
 ]
@@ -47,6 +52,7 @@ dev = [
 tsfm = [
     "torch>=2.0",
     "transformers>=4.40",
+    "granite-tsfm @ git+https://github.com/ibm-granite/granite-tsfm",
 ]
 
 [tool.uv]

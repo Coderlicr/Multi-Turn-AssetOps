@@ -141,7 +141,7 @@ def run_tsfm_forecasting(
     dataset_path: str,
     timestamp_column: str,
     target_columns: List[str],
-    model_checkpoint: str = "ttm_96_28",
+    model_checkpoint: Optional[str] = None,
     forecast_horizon: int = -1,
     conditional_columns: Optional[List[str]] = None,
     id_columns: Optional[List[str]] = None,
@@ -168,6 +168,11 @@ def run_tsfm_forecasting(
         autoregressive_modeling: Use autoregressive inference when True.
         include_dataquality_summary: Attach a data-quality report to the result.
     """
+    if not model_checkpoint:
+        model_checkpoint = "ttm_96_28"
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not target_columns:
@@ -269,7 +274,7 @@ def run_tsfm_finetuning(
     dataset_path: str,
     timestamp_column: str,
     target_columns: List[str],
-    model_checkpoint: str = "ttm_96_28",
+    model_checkpoint: Optional[str] = None,
     save_model_dir: str = "tuned_models",
     forecast_horizon: int = -1,
     n_finetune: float = 0.05,
@@ -302,6 +307,11 @@ def run_tsfm_finetuning(
         autoregressive_modeling: Use autoregressive mode when True.
         include_dataquality_summary: Attach a data-quality report to the result.
     """
+    if not model_checkpoint:
+        model_checkpoint = "ttm_96_28"
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not target_columns:
@@ -438,6 +448,9 @@ def run_tsad(
         frequency_sampling: Sampling frequency string or None to auto-detect.
         autoregressive_modeling: Use autoregressive mode when True.
     """
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not tsfm_output_json.strip():
@@ -507,13 +520,52 @@ def run_tsad(
 
 # ── Integrated TSAD (forecasting + anomaly detection in one call) ─────────────
 
+_VALID_AD_TYPES = {"timeseries_conformal", "timeseries_conformal_adaptive"}
+
+# Maps ISO 8601 duration strings (commonly produced by LLMs) to the internal
+# frequency tokens that TSFM accepts.  Unrecognised values pass through
+# unchanged; forecasting.py will then fall back to auto-detection from
+# timestamps.
+_ISO_TO_TSFM_FREQ: dict[str, str] = {
+    "PT1M":  "minutely",
+    "PT2M":  "2_minutes",
+    "PT5M":  "5_minutes",
+    "PT10M": "10_minutes",
+    "PT15M": "15_minutes",
+    "PT30M": "half_hourly",
+    "PT1H":  "hourly",
+}
+
+
+def _normalise_frequency(freq: Optional[str]) -> tuple[str, Optional[str]]:
+    """Normalise a frequency_sampling value and validate it.
+
+    Returns (normalised_value, error_message).  error_message is None when the
+    value is valid.  Empty / None / 'oov' are all treated as "auto-detect" and
+    pass through as ''.
+    """
+    from .metrics import _freq_token_to_minutes
+
+    if not freq:
+        return "", None
+    mapped = _ISO_TO_TSFM_FREQ.get(freq, freq)
+    if mapped not in _freq_token_to_minutes:
+        valid = sorted(_ISO_TO_TSFM_FREQ.keys()) + sorted(
+            k for k in _freq_token_to_minutes if k != "oov"
+        )
+        return mapped, (
+            f"Unknown frequency_sampling '{freq}'. "
+            f"Valid values: {valid}"
+        )
+    return mapped, None
+
 
 @mcp.tool()
 def run_integrated_tsad(
     dataset_path: str,
     timestamp_column: str,
     target_columns: List[str],
-    model_checkpoint: str = "ttm_96_28",
+    model_checkpoint: Optional[str] = None,
     false_alarm: float = 0.05,
     ad_model_type: str = "timeseries_conformal_adaptive",
     n_calibration: float = 0.2,
@@ -541,10 +593,24 @@ def run_integrated_tsad(
         frequency_sampling: Sampling frequency string or '' to auto-detect.
         autoregressive_modeling: Use autoregressive mode when True.
     """
+    if not model_checkpoint:
+        model_checkpoint = "ttm_96_28"
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not target_columns:
         return ErrorResult(error="target_columns must not be empty")
+    if ad_model_type not in _VALID_AD_TYPES:
+        # silent fallback temporarily
+        ad_model_type = "timeseries_conformal_adaptive"
+        # return ErrorResult(
+        #     error=(
+        #         f"Unknown ad_model_type '{ad_model_type}'. "
+        #         f"Valid values: {sorted(_VALID_AD_TYPES)}"
+        #     )
+        # )
 
     try:
         import tsfm_public  # noqa: F401
@@ -561,6 +627,7 @@ def run_integrated_tsad(
         with open(model_checkpoint + "/config.json") as _f:
             model_config = json.load(_f)
         df_combined = pd.DataFrame()
+        col_errors: list[str] = []
 
         for col in target_columns:
             col_config = _build_dataset_config(
@@ -571,19 +638,31 @@ def run_integrated_tsad(
                 frequency_sampling,
                 autoregressive_modeling,
             )
+            # Quality filter must auto-detect frequency from the data; using a
+            # caller-supplied value (e.g. "hourly") on data with a different
+            # interval (e.g. 15-min) causes the filter to treat every step as a
+            # gap and discard all rows.
+            col_config_for_dq = _build_dataset_config(
+                timestamp_column,
+                [col],
+                conditional_columns,
+                id_columns,
+                "",
+                autoregressive_modeling,
+            )
 
             # 1. Load and quality-filter data for this column
             data_df = _read_ts_data(dataset_path, dataset_config_dictionary=col_config)
             output_dq = _tsfm_data_quality_filter(
-                data_df, col_config, model_config, task="inference"
+                data_df, col_config_for_dq, model_config, task="inference"
             )
             data_df_filtered = output_dq["data"]
             col_config_filtered = output_dq["dataset_config_dictionary"]
 
             if len(data_df_filtered) == 0:
-                logger.warning(
-                    "Data quality filter removed all data for column %s; skipping.", col
-                )
+                msg = f"{col}: data quality filter removed all rows"
+                logger.warning(msg)
+                col_errors.append(msg)
                 continue
 
             # 2. Zero-shot forecasting for this column
@@ -595,7 +674,9 @@ def run_integrated_tsad(
                     model_checkpoint,
                 )
             except Exception as exc:
-                logger.warning("Forecasting failed for column %s: %s", col, exc)
+                msg = f"{col}: forecasting failed — {exc}"
+                logger.warning(msg)
+                col_errors.append(msg)
                 continue
 
             inference_data = {
@@ -606,12 +687,29 @@ def run_integrated_tsad(
                 "target_columns": forecast_output["target_columns"],
             }
             # 3. Conformal anomaly detection for this column
+            # Write quality-filtered data (which has the segment_id column added
+            # by the quality filter) to a temp CSV.  Build a fresh config that
+            # uses segment_id as the id column to match the forecasting output.
+            tsad_tmp = os.path.join(tempfile.mkdtemp(), f"tsad_input_{uuid.uuid4()}.csv")
+            data_df_filtered.to_csv(tsad_tmp, index=False)
+            filtered_conditional = (
+                col_config_filtered["column_specifiers"].get("conditional_columns")
+                or None
+            )
+            tsad_config = _build_dataset_config(
+                timestamp_column,
+                [col],
+                filtered_conditional,
+                ["segment_id"],
+                frequency_sampling,
+                autoregressive_modeling,
+            )
             tsmodel_pred = inference_data
 
             try:
                 tsad_output = _TimeSeriesAnomalyDetectionConformalWrapper().run(
-                    dataset_path,
-                    col_config,
+                    tsad_tmp,
+                    tsad_config,
                     tsmodel_pred,
                     ad_model_checkpoint=None,
                     ad_model_save=ad_model_save,
@@ -621,14 +719,17 @@ def run_integrated_tsad(
                     false_alarm=false_alarm,
                 )
             except Exception as exc:
-                logger.warning("TSAD failed for column %s: %s", col, exc)
+                msg = f"{col}: anomaly detection failed — {exc}"
+                logger.warning(msg)
+                col_errors.append(msg)
                 continue
 
             df_col = _tsad_output_to_df(tsad_output)
             df_combined = pd.concat([df_combined, df_col], axis=0, ignore_index=True)
 
         if df_combined.empty:
-            return ErrorResult(error="No TSAD results produced for any target column.")
+            detail = "; ".join(col_errors) if col_errors else "unknown reason"
+            return ErrorResult(error=f"No TSAD results produced for any target column: {detail}")
 
         tmp_dir = tempfile.mkdtemp()
         csv_path = os.path.join(tmp_dir, f"integrated_tsad_{uuid.uuid4()}.csv")
