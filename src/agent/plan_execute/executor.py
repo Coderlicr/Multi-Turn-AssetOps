@@ -50,6 +50,8 @@ Do not write any explanation, reasoning, or prose — output only the JSON objec
 Use EXACTLY the parameter names listed in "Tool parameters" above.
 Use the task description and prior step results to determine the correct argument values.
 If a value comes from a list, use the first relevant element.
+Date/time values MUST be ISO 8601 strings (e.g. "2025-01-01T00:00:00"). Never use natural language like "1 week ago".
+Today's date is {today}.
 
 JSON:"""
 
@@ -124,6 +126,30 @@ class Executor:
         context: dict[int, StepResult] = {}
         results: list[StepResult] = []
         for step in executable_steps:
+            failed_deps = [
+                d for d in step.dependencies
+                if d in context and not context[d].success
+            ]
+            if failed_deps:
+                _log.warning(
+                    "Skipping step %d [%s]: dependency step(s) %s failed.",
+                    step.step_number,
+                    step.server,
+                    failed_deps,
+                )
+                skipped = StepResult(
+                    step_number=step.step_number,
+                    task=step.task,
+                    server=step.server,
+                    response="",
+                    error=f"Skipped: dependency step(s) {failed_deps} failed.",
+                    tool=step.tool,
+                    tool_args=step.tool_args,
+                )
+                context[step.step_number] = skipped
+                results.append(skipped)
+                continue
+
             _log.info(
                 "Step %d/%d [%s]: %s",
                 step.step_number,
@@ -185,6 +211,20 @@ class Executor:
             )
 
             response = await _call_tool(server_path, step.tool, resolved_args)
+
+            # Treat tool-level error responses as failures.
+            tool_error = _extract_tool_error(response)
+            if tool_error is not None:
+                return StepResult(
+                    step_number=step.step_number,
+                    task=step.task,
+                    server=step.server,
+                    response=response,
+                    error=tool_error,
+                    tool=step.tool,
+                    tool_args=resolved_args,
+                )
+
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
@@ -217,6 +257,7 @@ async def _resolve_args_with_llm(
     llm: LLMBackend,
 ) -> dict:
     """Generate tool arguments from the task description and prior step results."""
+    from datetime import date
     context_text = "\n".join(
         f"Step {n}: {r.response}" for n, r in sorted(context.items())
     )
@@ -227,6 +268,7 @@ async def _resolve_args_with_llm(
         .replace("{tool}", tool)
         .replace("{tool_schema}", tool_schema or "(unknown)")
         .replace("{context}", context_text or "(none)")
+        .replace("{today}", date.today().isoformat())
     )
     raw = llm.generate(prompt)
     resolved = _parse_json(raw)
@@ -331,17 +373,24 @@ async def _list_tools(server_path: Path | str) -> list[dict]:
             return tools
 
 
+_TOOL_CALL_TIMEOUT = 60  # seconds
+
+
 async def _call_tool(server_path: Path | str, tool_name: str, args: dict) -> str:
     """Connect to an MCP server via stdio and call a tool."""
+    import asyncio
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    params = _make_stdio_params(server_path)
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool(tool_name, args)
-            return _extract_content(result.content)
+    async def _inner() -> str:
+        params = _make_stdio_params(server_path)
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, args)
+                return _extract_content(result.content)
+
+    return await asyncio.wait_for(_inner(), timeout=_TOOL_CALL_TIMEOUT)
 
 
 def _extract_content(content: list[Any]) -> str:
@@ -363,6 +412,17 @@ def _resolve_args(args: dict, context: dict[int, StepResult]) -> dict:
         else:
             resolved[key] = val
     return resolved
+
+
+def _extract_tool_error(response: str) -> str | None:
+    """Return the error message if the tool response JSON contains an 'error' key."""
+    try:
+        parsed = json.loads(response)
+        if isinstance(parsed, dict) and "error" in parsed:
+            return str(parsed["error"])
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
 
 
 def _parse_tool_call(raw: str) -> dict:
