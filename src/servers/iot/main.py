@@ -1,6 +1,9 @@
+import csv
 import os
 import logging
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -72,6 +75,17 @@ class HistoryResult(BaseModel):
     start: str
     final: Optional[str]
     observations: List[Dict[str, Any]]
+    message: str
+
+
+class HistoryCsvResult(BaseModel):
+    site_name: str
+    asset_id: str
+    total_observations: int
+    start: str
+    final: Optional[str]
+    columns: List[str]
+    csv_path: str
     message: str
 
 
@@ -198,6 +212,95 @@ def history(
     except Exception as e:
         logger.error(f"CouchDB query failed: {e}")
         return ErrorResult(error=str(e))
+
+
+@mcp.tool()
+def history_csv(
+    site_name: str,
+    asset_id: str,
+    start: str,
+    final: Optional[str] = None,
+) -> Union[HistoryCsvResult, ErrorResult]:
+    """Returns historical sensor data for an asset as a CSV file path.
+
+    Identical to `history` but writes the observations to a temporary CSV file
+    and returns the file path instead of raw JSON.  Use this tool when the next
+    step requires a CSV dataset (e.g. TSFM anomaly detection or forecasting).
+
+    The CSV has columns: timestamp, asset_id, <sensor1>, <sensor2>, ...
+    """
+    try:
+        start_iso = datetime.fromisoformat(start).isoformat()
+        if final:
+            datetime.fromisoformat(final)
+            if start >= final:
+                return ErrorResult(error="start >= final")
+    except ValueError as e:
+        return ErrorResult(error=f"Invalid date format: {e}")
+
+    if not db:
+        return ErrorResult(error="CouchDB not connected")
+
+    selector = {
+        "asset_id": asset_id,
+        "timestamp": {"$gte": start_iso},
+    }
+    if final:
+        selector["timestamp"]["$lt"] = datetime.fromisoformat(final).isoformat()
+
+    try:
+        res = db.find(
+            selector, limit=5000, sort=[{"asset_id": "asc"}, {"timestamp": "asc"}]
+        )
+        docs = res["docs"]
+    except Exception as e:
+        logger.error(f"CouchDB query failed: {e}")
+        return ErrorResult(error=str(e))
+
+    if not docs:
+        return ErrorResult(
+            error=f"No observations found for {asset_id} from {start} to {final or 'now'}."
+        )
+
+    # Determine column order: timestamp first, then asset_id, then sensors sorted
+    exclude = {"_id", "_rev"}
+    meta_cols = ["timestamp", "asset_id"]
+    sensor_cols = sorted(
+        k for k in docs[0].keys() if k not in exclude and k not in meta_cols
+    )
+    columns = meta_cols + sensor_cols
+
+    # Write to a named temp file that persists after close (delete_on_close=False)
+    safe_asset = asset_id.replace(" ", "_").replace("/", "-")
+    safe_start = start.replace(":", "").replace("-", "")
+    safe_final = (final or "now").replace(":", "").replace("-", "")
+    tmp_dir = Path(tempfile.gettempdir())
+    csv_path = tmp_dir / f"{safe_asset}_{safe_start}_{safe_final}_history.csv"
+
+    try:
+        with csv_path.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=columns, extrasaction="ignore", restval=""
+            )
+            writer.writeheader()
+            writer.writerows(docs)
+    except OSError as e:
+        return ErrorResult(error=f"Failed to write CSV: {e}")
+
+    return HistoryCsvResult(
+        site_name=site_name,
+        asset_id=asset_id,
+        total_observations=len(docs),
+        start=start,
+        final=final,
+        columns=columns,
+        csv_path=str(csv_path),
+        message=(
+            f"Wrote {len(docs)} observations for {asset_id} "
+            f"({start} to {final or 'now'}) to {csv_path}. "
+            f"Sensor columns: {', '.join(sensor_cols)}."
+        ),
+    )
 
 
 def main():
