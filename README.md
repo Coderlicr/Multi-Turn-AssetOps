@@ -1,9 +1,18 @@
 ## Quick Start
+You need to put downloaded`main.json` in `src/couchdb/sample_data/iot` directory before running Docker Compose.
+
 ```
 uv sync
 source .venv/bin/activate
 docker compose -f src/couchdb/docker-compose.yaml up -d
 uv run plan-execute --show-plan --show-history "What is the current date and time? Also list assets at site MAIN."
+```
+
+`docker compose` initializes the IoT CouchDB database from `src/couchdb/sample_data/iot/main.json`, filtered to `Chiller 3`, `Chiller 4`, `Chiller 6`, and `Chiller 9`.
+
+To verify the imported sample data:
+```
+python src/couchdb/check_couchdb_data.py
 ```
 
 Your `.env` file should be like (fill `WATSONX_APIKEY` and `WATSONX_PROJECT_ID` first):

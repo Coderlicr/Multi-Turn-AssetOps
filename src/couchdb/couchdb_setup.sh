@@ -20,13 +20,17 @@ echo "CouchDB is ready."
 echo "Installing Python dependencies..."
 apt-get update -qq
 apt-get install -y -qq python3 python3-pip
-pip3 install -q --break-system-packages requests pandas python-dotenv
+pip3 install -q --break-system-packages requests pandas python-dotenv ijson
 
-echo "Loading IoT asset data..."
+echo "Loading IoT asset data from main.json (Chiller 3/4/6/9 only)..."
 COUCHDB_URL="http://localhost:5984" \
   python3 /couchdb/init_asset_data.py \
-    --data-file /sample_data/iot/chiller6_june2020_sensordata_couchdb.json \
+    --data-file /sample_data/iot/main.json \
     --db "${IOT_DBNAME:-chiller}" \
+    --asset-id "Chiller 3" \
+    --asset-id "Chiller 4" \
+    --asset-id "Chiller 6" \
+    --asset-id "Chiller 9" \
     --drop
 
 echo "Loading work order data..."
