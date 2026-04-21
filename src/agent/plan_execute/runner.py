@@ -25,6 +25,8 @@ from ..session import SessionState
 
 _log = logging.getLogger(__name__)
 
+_MAX_REPLAN_ATTEMPTS = 2
+
 _SUMMARIZE_PROMPT = """\
 You are summarizing the results of a multi-step task execution for an \
 industrial asset operations system.
@@ -104,8 +106,47 @@ class PlanExecuteRunner(AgentRunner):
         plan = self._planner.generate_plan(effective_question, server_descriptions)
         _log.info("Plan has %d step(s).", len(plan.steps))
 
-        # 3. Execute
-        history = await self._executor.execute_plan(plan, effective_question)
+        # 3. Execute (with replan loop on failures)
+        original_plan = plan
+        replans: list = []
+        accumulated_context: dict[int, object] = {}
+
+        round_history = await self._executor.execute_plan(plan, effective_question)
+        for r in round_history:
+            accumulated_context[r.step_number] = r
+        history = round_history
+        next_step = max(s.step_number for s in plan.steps) + 1
+
+        for attempt in range(_MAX_REPLAN_ATTEMPTS):
+            # Only check the most recent round — already-repaired failures are ignored.
+            failed = [r for r in round_history if not r.success]
+            if not failed:
+                break
+            _log.info(
+                "Replan attempt %d/%d: %d failed step(s).",
+                attempt + 1,
+                _MAX_REPLAN_ATTEMPTS,
+                len(failed),
+            )
+            replan = self._planner.generate_replan(
+                question=effective_question,
+                original_plan=original_plan,
+                history=history,
+                server_descriptions=server_descriptions,
+                next_step_number=next_step,
+            )
+            if not replan.steps:
+                _log.warning("Replan produced no steps; stopping.")
+                break
+            _log.info("Replan has %d new step(s).", len(replan.steps))
+            replans.append(replan)
+            next_step = max(s.step_number for s in replan.steps) + 1
+            round_history = await self._executor.execute_plan(
+                replan, effective_question, prior_context=accumulated_context
+            )
+            for r in round_history:
+                accumulated_context[r.step_number] = r
+            history = history + round_history
 
         # 4. Summarise
         _log.info("Summarising...")
@@ -126,7 +167,8 @@ class PlanExecuteRunner(AgentRunner):
         result = OrchestratorResult(
             question=question,
             answer=answer,
-            plan=plan,
+            plan=original_plan,
+            replans=replans,
             history=history,
         )
         if session is not None:

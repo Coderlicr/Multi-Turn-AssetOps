@@ -87,7 +87,12 @@ class Executor:
                 descriptions[name] = f"  (unavailable: {exc})"
         return descriptions
 
-    async def execute_plan(self, plan: Plan, question: str) -> list[StepResult]:
+    async def execute_plan(
+        self,
+        plan: Plan,
+        question: str,
+        prior_context: dict[int, "StepResult"] | None = None,
+    ) -> list[StepResult]:
         """Execute all plan steps in dependency order."""
         ordered = plan.resolved_order()
         executable_steps: list[PlanStep] = []
@@ -123,7 +128,7 @@ class Executor:
             except Exception:  # noqa: BLE001
                 tool_schemas[name] = {}
 
-        context: dict[int, StepResult] = {}
+        context: dict[int, StepResult] = dict(prior_context) if prior_context else {}
         results: list[StepResult] = []
         for step in executable_steps:
             failed_deps = [

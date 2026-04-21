@@ -49,6 +49,48 @@ Question: {question}
 Plan:
 """
 
+_REPLAN_PROMPT = """\
+You are a planning assistant for industrial asset operations and maintenance.
+
+A previous plan partially failed during execution. Your job is to produce \
+ONLY the remaining steps needed to complete the original goal, taking into \
+account what has already succeeded and what went wrong.
+
+Original question: {question}
+
+Original plan:
+{original_plan}
+
+Execution results so far (successful and failed):
+{execution_history}
+
+Failed steps and their errors:
+{failed_steps}
+
+Output ONLY the new/replacement steps using the same format as before.
+Number steps starting from {next_step_number}.
+Reference earlier completed steps with #S<N> in dependencies if needed.
+
+Available servers and tools:
+{servers}
+
+Output format — one block per step, exactly:
+
+#Task{next_step_number}: <task description>
+#Server{next_step_number}: <exact server name>
+#Tool{next_step_number}: <exact tool name, or "none" if no tool call is needed>
+#Dependency{next_step_number}: None  (or #S<N> for dependencies)
+#ExpectedOutput{next_step_number}: <what this step should produce>
+
+Rules:
+- Server and tool names must exactly match those listed above.
+- Only output steps that still need to be done.
+- If a failed step can be retried with a different tool or approach, include it.
+- Do NOT re-run steps that already succeeded.
+
+New steps:
+"""
+
 _TASK_RE = re.compile(r"#Task(\d+):\s*(.+)")
 _SERVER_RE = re.compile(r"#Server(\d+):\s*(.+)")
 _TOOL_RE = re.compile(r"#Tool(\d+):\s*(.+)")
@@ -109,6 +151,53 @@ class Planner:
 
     def __init__(self, llm: LLMBackend) -> None:
         self._llm = llm
+
+    def generate_replan(
+        self,
+        question: str,
+        original_plan: Plan,
+        history: list,
+        server_descriptions: dict[str, str],
+        next_step_number: int | None = None,
+    ) -> Plan:
+        """Generate replacement steps for failed parts of a plan.
+
+        Args:
+            question: The original user question.
+            original_plan: The plan that was partially executed.
+            history: StepResult list from the partial execution.
+            server_descriptions: Mapping of server_name -> formatted tool signatures.
+
+        Returns:
+            A Plan containing only the new steps to execute.
+        """
+        _MAX_RESP = 500
+        history_text = "\n".join(
+            f"Step {r.step_number} [{r.server}/{r.tool}] "
+            + ("OK: " + r.response[:_MAX_RESP] if r.success else f"FAILED: {r.error}")
+            for r in history
+        )
+        failed_text = "\n".join(
+            f"Step {r.step_number} ({r.task}): {r.error}"
+            for r in history
+            if not r.success
+        )
+        next_n = next_step_number if next_step_number is not None else (
+            max((r.step_number for r in history), default=0) + 1
+        )
+        servers_text = "\n\n".join(
+            f"{name}:\n{desc}" for name, desc in server_descriptions.items()
+        )
+        prompt = _REPLAN_PROMPT.format(
+            question=question,
+            original_plan=original_plan.raw,
+            execution_history=history_text or "(none)",
+            failed_steps=failed_text or "(none)",
+            next_step_number=next_n,
+            servers=servers_text,
+        )
+        raw = self._llm.generate(prompt)
+        return parse_plan(raw)
 
     def generate_plan(
         self,

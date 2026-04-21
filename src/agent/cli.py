@@ -204,12 +204,15 @@ def _render_result(result, args: argparse.Namespace) -> None:
         return
 
     if args.show_plan:
-        _print_section("Plan")
-        for step in result.plan.steps:
-            deps = ", ".join(f"#{d}" for d in step.dependencies) or "none"
-            print(f"  [{step.step_number}] {step.server}: {step.task}")
-            print(f"       tool: {step.tool}  args: {step.tool_args}")
-            print(f"       deps={deps} | expected: {step.expected_output}")
+        all_plans = [result.plan] + result.replans
+        for i, p in enumerate(all_plans):
+            label = "Plan" if i == 0 else f"Replan {i}"
+            _print_section(label)
+            for step in p.steps:
+                deps = ", ".join(f"#{d}" for d in step.dependencies) or "none"
+                print(f"  [{step.step_number}] {step.server}: {step.task}")
+                print(f"       tool: {step.tool}  args: {step.tool_args}")
+                print(f"       deps={deps} | expected: {step.expected_output}")
 
     if args.show_history:
         _print_section("Execution History")
@@ -227,22 +230,30 @@ def _render_result(result, args: argparse.Namespace) -> None:
     print()
 
 
+def _plan_to_list(plan) -> list:
+    return [
+        {
+            "step": s.step_number,
+            "task": s.task,
+            "server": s.server,
+            "tool": s.tool,
+            "tool_args": s.tool_args,
+            "dependencies": s.dependencies,
+            "expected_output": s.expected_output,
+        }
+        for s in plan.steps
+    ]
+
+
 def _result_to_output(result) -> dict:
+    all_plans = [{"label": "original", "steps": _plan_to_list(result.plan)}] + [
+        {"label": f"replan_{i + 1}", "steps": _plan_to_list(p)}
+        for i, p in enumerate(result.replans)
+    ]
     return {
         "question": result.question,
         "answer": result.answer,
-        "plan": [
-            {
-                "step": s.step_number,
-                "task": s.task,
-                "server": s.server,
-                "tool": s.tool,
-                "tool_args": s.tool_args,
-                "dependencies": s.dependencies,
-                "expected_output": s.expected_output,
-            }
-            for s in result.plan.steps
-        ],
+        "plans": all_plans,
         "history": [
             {
                 "step": r.step_number,
