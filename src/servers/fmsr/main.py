@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Union
 
@@ -228,14 +229,20 @@ def get_failure_mode_sensor_mapping(
     if not _llm_available:
         return ErrorResult(error="LLM unavailable")
 
+    pairs = [(fm, s) for fm in failure_modes for s in sensors]
     full_relevancy: List[RelevancyEntry] = []
     fm2sensor: Dict[str, List[str]] = {}
     sensor2fm: Dict[str, List[str]] = {}
 
     try:
-        for s in sensors:
-            for fm in failure_modes:
-                gen = _call_relevancy(asset_name, fm, s)
+        with ThreadPoolExecutor(max_workers=min(len(pairs), 8)) as pool:
+            future_to_pair = {
+                pool.submit(_call_relevancy, asset_name, fm, s): (fm, s)
+                for fm, s in pairs
+            }
+            for future in as_completed(future_to_pair):
+                fm, s = future_to_pair[future]
+                gen = future.result()
                 entry = RelevancyEntry(
                     asset_name=asset_name,
                     failure_mode=fm,

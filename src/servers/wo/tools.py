@@ -16,6 +16,7 @@ from .data import (
     filter_df,
     get_transition_matrix,
     load,
+    normalize_equipment_id,
     parse_date,
     row_to_event,
 )
@@ -46,6 +47,7 @@ def get_work_orders(
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -77,6 +79,7 @@ def get_preventive_work_orders(
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -108,6 +111,7 @@ def get_corrective_work_orders(
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -139,6 +143,7 @@ def get_events(
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("events")
     if df is None:
         return ErrorResult(error="Event data not available")
@@ -204,6 +209,7 @@ def get_work_order_distribution(
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     wo_df = load("wo_events")
     fc_df = load("failure_codes")
     if wo_df is None:
@@ -279,6 +285,7 @@ def predict_next_work_order(
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     wo_df = load("wo_events")
     pfc_df = load("primary_failure_codes")
     if wo_df is None:
@@ -346,6 +353,7 @@ def analyze_alert_to_failure(
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     alert_df = load("alert_events")
     if alert_df is None:
         return ErrorResult(error="Alert events data not available")
