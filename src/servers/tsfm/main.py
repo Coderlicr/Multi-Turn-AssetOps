@@ -142,7 +142,7 @@ def run_tsfm_forecasting(
     timestamp_column: str,
     target_columns: List[str],
     model_checkpoint: Optional[str] = None,
-    forecast_horizon: int = -1,
+    forecast_horizon: Optional[int] = None,
     conditional_columns: Optional[List[str]] = None,
     id_columns: Optional[List[str]] = None,
     frequency_sampling: str = "oov",
@@ -170,6 +170,8 @@ def run_tsfm_forecasting(
     """
     if not model_checkpoint:
         model_checkpoint = "ttm_96_28"
+    if forecast_horizon is None:
+        forecast_horizon = -1
     frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
     if _freq_err:
         return ErrorResult(error=_freq_err)

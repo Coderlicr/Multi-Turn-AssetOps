@@ -3,8 +3,11 @@ import logging
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import List, Optional
 from uuid import uuid4
 
+import numpy as np
+import pandas as pd
 import pendulum
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
@@ -88,6 +91,53 @@ def current_time_english() -> TimeEnglishResult:
     eng = dt.to_datetime_string()
 
     return TimeEnglishResult(english=eng, iso=now_iso)
+
+
+@mcp.tool()
+def csv_stats(csv_path: str, columns: Optional[List[str]] = None) -> str:
+    """Compute descriptive statistics for columns in a CSV file.
+
+    Returns mean, std, min, max, count, and linear trend (slope) for each
+    requested column.  Useful for comparing sensor readings across assets.
+
+    Args:
+        csv_path: Absolute path to the CSV file.
+        columns: List of column names to analyse.  If omitted, all numeric
+                 columns are included.
+    """
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as exc:
+        return json.dumps({"error": f"Cannot read CSV '{csv_path}': {exc}"})
+
+    numeric_df = df.select_dtypes(include=[np.number])
+    if columns:
+        missing = [c for c in columns if c not in numeric_df.columns]
+        if missing:
+            return json.dumps({"error": f"Columns not found or not numeric: {missing}"})
+        numeric_df = numeric_df[columns]
+
+    if numeric_df.empty:
+        return json.dumps({"error": "No numeric columns available"})
+
+    stats: dict = {}
+    for col in numeric_df.columns:
+        series = numeric_df[col].dropna()
+        if series.empty:
+            stats[col] = {"count": 0}
+            continue
+        x = np.arange(len(series), dtype=float)
+        slope = float(np.polyfit(x, series.values, 1)[0]) if len(series) > 1 else 0.0
+        stats[col] = {
+            "count": int(series.count()),
+            "mean": round(float(series.mean()), 4),
+            "std": round(float(series.std()), 4),
+            "min": round(float(series.min()), 4),
+            "max": round(float(series.max()), 4),
+            "trend_slope": round(slope, 6),
+        }
+
+    return json.dumps({"csv_path": csv_path, "stats": stats})
 
 
 def main():
