@@ -29,7 +29,9 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "fmsr": "fmsr-mcp-server",
     "tsfm": "tsfm-mcp-server",
     "wo": "wo-mcp-server",
-    "vibration": "vibration-mcp-server",
+    # "vibration": "vibration-mcp-server",
+    # vibration server excluded: database only contains Motor_01 test data,
+    # no vibration sensors exist for the chiller assets used in production.
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
