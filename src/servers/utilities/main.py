@@ -3,14 +3,14 @@ import logging
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 import pendulum
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import os
 
@@ -53,8 +53,10 @@ def get_temp_filename() -> str:
 
 
 @mcp.tool()
-def json_reader(file_name: str) -> str:
-    """Reads a JSON file, parses its content, and returns the parsed data."""
+def json_reader(
+    file_name: Annotated[str, Field(description="Absolute path to a .json file. This tool only reads JSON files — do NOT pass a .csv path here. For CSV files (e.g. from history_csv or run_tsad), use csv_stats instead.")],
+) -> str:
+    """Reads a JSON file and returns its parsed content. For CSV files use csv_stats."""
     try:
         with open(file_name, "r") as fp:
             contents = json.load(fp)
@@ -94,16 +96,13 @@ def current_time_english() -> TimeEnglishResult:
 
 
 @mcp.tool()
-def csv_stats(csv_path: str, columns: Optional[List[str]] = None) -> str:
-    """Compute descriptive statistics for columns in a CSV file.
+def csv_stats(
+    csv_path: Annotated[str, Field(description="Absolute path to a .csv file, e.g. the csv_path returned by history_csv or run_tsad/run_integrated_tsad. Use this tool — not json_reader — whenever the prior step returned a CSV file path.")],
+    columns: Annotated[Optional[List[str]], Field(description="List of column names to analyse. If omitted, all numeric columns are included.")] = None,
+) -> str:
+    """Compute descriptive statistics (mean, std, min, max, trend slope) for columns in a CSV file.
 
-    Returns mean, std, min, max, count, and linear trend (slope) for each
-    requested column.  Useful for comparing sensor readings across assets.
-
-    Args:
-        csv_path: Absolute path to the CSV file.
-        columns: List of column names to analyse.  If omitted, all numeric
-                 columns are included.
+    Use this tool to read results from history_csv, run_tsad, or run_integrated_tsad — not json_reader.
     """
     try:
         df = pd.read_csv(csv_path)

@@ -29,6 +29,7 @@ _TOOLS = [
     tools.get_failure_codes,
     tools.get_work_order_distribution,
     tools.predict_next_work_order,
+    tools.get_alert_rules,
     tools.analyze_alert_to_failure,
 ]
 for _fn in _TOOLS:

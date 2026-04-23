@@ -4,9 +4,14 @@ import logging
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+_DatetimeParam = Annotated[str, Field(description="ISO 8601 datetime string, e.g. '2020-06-01T00:00:00'.")]
+_DatetimeOpt = Annotated[Optional[str], Field(description="ISO 8601 datetime string, e.g. '2020-06-20T00:00:00'. Omit to query up to the latest data.")]
+_SiteName = Annotated[str, Field(description="Site name. The only available site is 'MAIN'.")]
+_AssetId = Annotated[str, Field(description="Asset name, e.g. 'Chiller 3', 'Chiller 4', 'Chiller 6', or 'Chiller 9'.")]
 import couchdb3
 from dotenv import load_dotenv
 
@@ -137,7 +142,7 @@ def sites() -> SitesResult:
 
 
 @mcp.tool()
-def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
+def assets(site_name: _SiteName) -> Union[AssetsResult, ErrorResult]:
     """Returns a list of assets for a given site. Each asset includes an id and a name."""
     if site_name not in SITES:
         return ErrorResult(error=f"unknown site {site_name}")
@@ -152,7 +157,7 @@ def assets(site_name: str) -> Union[AssetsResult, ErrorResult]:
 
 
 @mcp.tool()
-def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
+def sensors(site_name: _SiteName, asset_id: _AssetId) -> Union[SensorsResult, ErrorResult]:
     """Lists the sensors available for a specified asset at a given site."""
     if site_name not in SITES:
         return ErrorResult(error=f"unknown site {site_name}")
@@ -172,7 +177,7 @@ def sensors(site_name: str, asset_id: str) -> Union[SensorsResult, ErrorResult]:
 
 @mcp.tool()
 def history(
-    site_name: str, asset_id: str, start: str, final: Optional[str] = None
+    site_name: _SiteName, asset_id: _AssetId, start: _DatetimeParam, final: _DatetimeOpt = None
 ) -> Union[HistoryResult, ErrorResult]:
     """Returns a list of historical sensor values for the specified asset(s) at a site within a given time range (start to final)."""
     try:
@@ -216,10 +221,10 @@ def history(
 
 @mcp.tool()
 def history_csv(
-    site_name: str,
-    asset_id: str,
-    start: str,
-    final: Optional[str] = None,
+    site_name: _SiteName,
+    asset_id: _AssetId,
+    start: _DatetimeParam,
+    final: _DatetimeOpt = None,
 ) -> Union[HistoryCsvResult, ErrorResult]:
     """Returns historical sensor data for an asset as a CSV file path.
 
@@ -274,7 +279,8 @@ def history_csv(
     safe_asset = asset_id.replace(" ", "_").replace("/", "-")
     safe_start = start.replace(":", "").replace("-", "")
     safe_final = (final or "now").replace(":", "").replace("-", "")
-    tmp_dir = Path(tempfile.gettempdir())
+    tmp_dir = Path(tempfile.gettempdir()) / "assetops"
+    tmp_dir.mkdir(exist_ok=True)
     csv_path = tmp_dir / f"{safe_asset}_{safe_start}_{safe_final}_history.csv"
 
     try:
