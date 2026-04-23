@@ -36,8 +36,22 @@ Original question: {question}
 Step-by-step execution results:
 {results}
 
-Provide a concise, direct answer to the original question based on the results
-above. Do not repeat the individual steps — just give the final answer.
+Provide a concise, direct answer to the original question based on the results above.
+Rules:
+- Do not repeat the individual steps — just give the final answer.
+- Read the question type before framing the answer:
+  * Fault / anomaly / "what's wrong" questions: identify the primary concern asset \
+by name and lead with it (highest anomaly count, highest mean, increasing trend).
+  * Comparison questions ("compare", "which is more efficient", "difference between"): \
+summarise the differences objectively — do NOT label one asset as "primary concern" \
+unless the data clearly shows a fault.
+  * Prediction / forecast questions: state the predicted outcome with the supporting numbers.
+- State conclusions directly. Do not end with "further investigation is recommended" \
+unless no data supports a conclusion.
+- Include specific numbers (mean, anomaly count, trend direction, slope) to back up claims.
+- Do not interpret a higher or lower metric value as good or bad unless the metric name \
+makes it unambiguous (e.g. "anomaly_count", "error_rate" are bad when high; \
+"efficiency" direction depends on context — state the value and trend, not a judgement).
 """
 
 

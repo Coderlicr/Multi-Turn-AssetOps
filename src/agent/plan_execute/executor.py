@@ -41,7 +41,7 @@ Generate the JSON arguments for the tool call below.
 
 Question: {question}
 Tool: {tool}
-Tool parameters: {tool_schema}
+Tool parameters (JSON schema): {tool_schema}
 Task: {task}
 
 Prior step results:
@@ -52,8 +52,13 @@ Do not write any explanation, reasoning, or prose — output only the JSON objec
 Use EXACTLY the parameter names listed in "Tool parameters" above.
 Use the task description and prior step results to determine the correct argument values.
 If a value comes from a list, use the first relevant element.
+For equipment_id or asset_id parameters, always use the asset name exactly as it appears in prior step results (e.g. "Chiller 6"), never guess numeric ID formats like "CWC04706".
 Date/time values MUST be ISO 8601 strings (e.g. "2025-01-01T00:00:00"). Never use natural language like "1 week ago".
 Today's date is {today}.
+Consistency rules — when the same tool is called for multiple assets in parallel steps:
+- target_columns: use the SAME column(s) for every asset. If the question is about temperature, use only the Supply Temperature column for every asset — do NOT pass all sensors for one asset and one sensor for another.
+- false_alarm: use the SAME value across all parallel TSAD steps (default 0.05 unless the question requires a different threshold).
+- start / final date range: use the SAME start and final for every asset so the time windows are comparable.
 
 JSON:"""
 
@@ -121,10 +126,7 @@ class Executor:
             try:
                 tools = await _list_tools(path)
                 tool_schemas[name] = {
-                    t["name"]: ", ".join(
-                        f"{p['name']}: {p['type']}{'?' if not p['required'] else ''}"
-                        for p in t.get("parameters", [])
-                    )
+                    t["name"]: json.dumps(t["input_schema"])
                     for t in tools
                 }
             except Exception:  # noqa: BLE001
@@ -390,6 +392,7 @@ async def _list_tools(server_path: Path | str) -> list[dict]:
                         "name": t.name,
                         "description": t.description or "",
                         "parameters": parameters,
+                        "input_schema": t.inputSchema or {},
                     }
                 )
             return tools

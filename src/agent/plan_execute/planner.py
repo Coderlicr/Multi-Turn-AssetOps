@@ -28,7 +28,7 @@ Output format — one block per step, exactly:
 
 #Task1: <task description>
 #Server1: <exact server name>
-#Tool1: <exact tool name, or "none" if no tool call is needed>
+#Tool1: <exact tool name>
 #Dependency1: None
 #ExpectedOutput1: <what this step should produce>
 
@@ -40,10 +40,10 @@ Output format — one block per step, exactly:
 
 Rules:
 - Server and tool names must exactly match those listed above.
-- Server must always be a real server name from the list above; never use "none" or "null" for a server.
+- Every step must call a real tool on a real server. Do NOT generate steps with tool="none" or server="none" — final synthesis is handled automatically after all steps complete.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
 - Keep tasks specific and actionable.
-
+- CRITICAL: The tools sensors, history_csv, and history only support ONE asset per call. You MUST create one step per asset. Example — for Chiller 6 and Chiller 9: create step A "Get sensors for Chiller 6" AND step B "Get sensors for Chiller 9". NEVER write "Get sensors for Chiller 6 and Chiller 9" as a single step.
 Question: {question}
 
 Plan:
@@ -78,7 +78,7 @@ Output format — one block per step, exactly:
 
 #Task{next_step_number}: <task description>
 #Server{next_step_number}: <exact server name>
-#Tool{next_step_number}: <exact tool name, or "none" if no tool call is needed>
+#Tool{next_step_number}: <exact tool name>
 #Dependency{next_step_number}: None  (or #S<N> for dependencies)
 #ExpectedOutput{next_step_number}: <what this step should produce>
 
@@ -87,6 +87,8 @@ Rules:
 - Only output steps that still need to be done.
 - If a failed step can be retried with a different tool or approach, include it.
 - Do NOT re-run steps that already succeeded.
+- If the same tool has failed multiple times for the same reason, do NOT retry it again. Choose a fundamentally different tool or approach instead.
+- CRITICAL: The tools sensors, history_csv, and history only support ONE asset per call. You MUST create one step per asset — never combine two assets into a single step for these tools.
 
 New steps:
 """
