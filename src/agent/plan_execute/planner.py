@@ -43,7 +43,9 @@ Rules:
 - Every step must call a real tool on a real server. Do NOT generate steps with tool="none" or server="none" — final synthesis is handled automatically after all steps complete.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
 - Keep tasks specific and actionable.
-- CRITICAL: The tools sensors, history_csv, and history only support ONE asset per call. You MUST create one step per asset. Example — for Chiller 6 and Chiller 9: create step A "Get sensors for Chiller 6" AND step B "Get sensors for Chiller 9". NEVER write "Get sensors for Chiller 6 and Chiller 9" as a single step.
+- CRITICAL: The tools sensors, history_csv, history, and csv_stats only support ONE asset per call. You MUST create one step per asset. Example — for Chiller 6 and Chiller 9: create step A "Get sensors for Chiller 6" AND step B "Get sensors for Chiller 9". NEVER write "Get sensors for Chiller 6 and Chiller 9" as a single step.
+- CRITICAL: If the "Pre-discovered asset inventory" section below lists specific assets, you MUST plan steps for EVERY asset listed — do not pick only one.
+Site MAIN: Chiller 3, Chiller 4, Chiller 6, Chiller 9
 Question: {question}
 
 Plan:

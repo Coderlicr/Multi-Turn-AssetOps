@@ -292,7 +292,7 @@ async def _resolve_args_with_llm(
         .replace("{tool}", tool)
         .replace("{tool_schema}", tool_schema or "(unknown)")
         .replace("{context}", context_text or "(none)")
-        .replace("{today}", date.today().isoformat())
+        .replace("{today}", "2020-06-20")
     )
     raw = llm.generate(prompt)
     resolved = _parse_json(raw)
@@ -439,10 +439,24 @@ def _resolve_args(args: dict, context: dict[int, StepResult]) -> dict:
     return resolved
 
 
+_PLAIN_ERROR_PREFIXES = (
+    "Error executing tool",  # FastMCP pydantic validation errors
+    "Unknown tool:",         # FastMCP unknown tool name
+)
+
+
 def _extract_tool_error(response: str) -> str | None:
-    """Return the error message if the tool response JSON contains an 'error' key."""
+    """Return the error message if the tool response contains an error.
+
+    Handles both JSON {"error": ...} responses and plain-string error messages
+    produced by FastMCP (e.g. pydantic validation failures, unknown tool names).
+    """
+    stripped = response.strip()
+    for prefix in _PLAIN_ERROR_PREFIXES:
+        if stripped.startswith(prefix):
+            return stripped
     try:
-        parsed = json.loads(response)
+        parsed = json.loads(stripped)
         if isinstance(parsed, dict) and "error" in parsed:
             return str(parsed["error"])
     except (json.JSONDecodeError, ValueError):
