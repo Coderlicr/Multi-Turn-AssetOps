@@ -21,6 +21,7 @@ from abc import ABC
 
 from agent.supervisor_specialist._utils import (
     call_llm,
+    extract_file_paths,
     format_artifacts_summary,
     format_tool_results_for_prompt,
     format_tool_schemas_for_prompt,
@@ -33,11 +34,13 @@ from agent.supervisor_specialist.runtime.mcp_tools import MCPToolClient
 from agent.supervisor_specialist.schemas import (
     ArtifactDraft,
     ArtifactEnvelope,
+    SpecialistResult,
     SpecialistFinal,
     TaskEnvelope,
     TimeWindow,
     ToolCallLog,
     ToolCallResult,
+    ToolCallSummary,
 )
 
 _log = logging.getLogger(__name__)
@@ -169,6 +172,28 @@ def _format_react_results(results: list[ToolCallResult]) -> str:
     return "\n\n".join(lines)
 
 
+def _summarize_tool_calls(results: list[ToolCallResult]) -> list[ToolCallSummary]:
+    """Compact tool results for cross-turn memory."""
+    summaries: list[ToolCallSummary] = []
+    for r in results:
+        result_text = str(r.result or "")
+        preview = result_text[:700] if result_text else None
+        if preview and len(result_text) > 700:
+            preview += "... [truncated]"
+        summaries.append(
+            ToolCallSummary(
+                order=r.order,
+                tool_name=r.tool_name,
+                args=r.args,
+                status=r.status,
+                result_preview=preview,
+                error=r.error,
+                file_paths=extract_file_paths(r.result),
+            )
+        )
+    return summaries
+
+
 # ── Base class ────────────────────────────────────────────────────────────────
 
 class SpecialistAgent(ABC):
@@ -195,7 +220,7 @@ class SpecialistAgent(ABC):
     def _role_label(self) -> str:
         return self.role.replace("_", " ").title()
 
-    async def run(self, task: TaskEnvelope) -> list[ArtifactEnvelope]:
+    async def run(self, task: TaskEnvelope) -> SpecialistResult:
         self.event_stream.emit(
             case_id=task.case_id,
             agent_role=self.role,
@@ -249,6 +274,7 @@ class SpecialistAgent(ABC):
             ],
             output_artifact_ids=[a.artifact_id for a in artifacts],
             status="ok",
+            turn_id=task.constraints.get("turn_id"),
         )
 
         self.event_stream.emit(
@@ -258,7 +284,10 @@ class SpecialistAgent(ABC):
             status="completed",
             message=f"Produced {len(artifacts)} artifact(s): {[a.artifact_id for a in artifacts]}",
         )
-        return artifacts
+        return SpecialistResult(
+            artifacts=artifacts,
+            tool_calls=_summarize_tool_calls(results),
+        )
 
     async def _run_react_loop(
         self,

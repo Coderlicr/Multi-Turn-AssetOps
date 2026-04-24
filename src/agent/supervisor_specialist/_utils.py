@@ -5,8 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+from typing import Any
 
 _log = logging.getLogger(__name__)
+
+_PATH_RE = re.compile(r"(/[^\s'\"),]+(?:\.csv|\.json|\.pkl|\.txt|/))")
 
 
 async def call_llm(llm, prompt: str, temperature: float = 0.0) -> str:
@@ -85,6 +89,74 @@ def format_artifacts_summary(artifacts: list) -> str:
         if file_paths:
             entry += f"\n  file_paths: {file_paths}"
         lines.append(entry)
+    return "\n".join(lines)
+
+
+def extract_file_paths(value: Any) -> list[str]:
+    """Return file-like paths from nested JSON-ish values or plain text."""
+    paths: list[str] = []
+
+    def _walk(item: Any) -> None:
+        if isinstance(item, str):
+            paths.extend(_PATH_RE.findall(item))
+            if item.startswith("/") and " " not in item and item not in paths:
+                paths.append(item)
+        elif isinstance(item, dict):
+            for v in item.values():
+                _walk(v)
+        elif isinstance(item, list):
+            for v in item:
+                _walk(v)
+
+    _walk(value)
+    # Preserve order while de-duplicating.
+    return list(dict.fromkeys(paths))
+
+
+def format_conversation_memory(memory: object | None) -> str:
+    """Format ConversationMemory compactly for LLM prompts."""
+    if memory is None:
+        return "(none)"
+
+    active_site = getattr(memory, "active_site", "MAIN")
+    active_asset_ids = getattr(memory, "active_asset_ids", [])
+    active_time_window = getattr(memory, "active_time_window", None)
+    focus_metrics = getattr(memory, "focus_metrics", [])
+    active_artifact_ids = getattr(memory, "active_artifact_ids", [])
+    rolling_summary = getattr(memory, "rolling_summary", "")
+    recent_turns = getattr(memory, "recent_turns", [])
+
+    lines = [
+        f"Active site: {active_site}",
+        f"Active assets: {active_asset_ids or '(none)'}",
+        f"Active time window: {active_time_window.model_dump() if active_time_window else '(none)'}",
+        f"Focus metrics: {focus_metrics or '(none)'}",
+        f"Reusable artifact IDs: {active_artifact_ids or '(none)'}",
+    ]
+    if rolling_summary:
+        lines.append(f"Rolling summary: {rolling_summary[:1200]}")
+
+    if recent_turns:
+        lines.append("Recent turns:")
+        for turn in recent_turns[-5:]:
+            user_msg = getattr(turn, "user_message", "")
+            answer = getattr(turn, "assistant_answer", "")
+            artifact_ids = getattr(turn, "artifact_ids", [])
+            root_cause = getattr(turn, "root_cause", None)
+            actions = getattr(turn, "recommended_actions", [])
+            tool_calls = getattr(turn, "tool_calls", [])
+            tool_names = [
+                f"{tc.tool_name}:{tc.status}"
+                for tc in tool_calls[-6:]
+                if hasattr(tc, "tool_name")
+            ]
+            lines.append(
+                f"- Turn {getattr(turn, 'turn_index', '?')}: "
+                f"user={user_msg[:240]!r}; answer={answer[:360]!r}; "
+                f"artifacts={artifact_ids}; tools={tool_names}; "
+                f"root_cause={root_cause or '(none)'}; actions={actions or '(none)'}"
+            )
+
     return "\n".join(lines)
 
 

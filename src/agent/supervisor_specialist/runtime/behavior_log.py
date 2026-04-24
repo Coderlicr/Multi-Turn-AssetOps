@@ -29,6 +29,7 @@ class BehaviorLog:
         tool_calls: list[ToolCallLog],
         output_artifact_ids: list[str],
         status: str,
+        turn_id: str | None = None,
         final_response: str | None = None,
     ) -> None:
         record = {
@@ -41,6 +42,8 @@ class BehaviorLog:
             "output_artifact_ids": output_artifact_ids,
             "status": status,
         }
+        if turn_id is not None:
+            record["turn_id"] = turn_id
         if final_response is not None:
             record["final_response"] = final_response
         log_path = self._log_dir / f"{case_id}.jsonl"

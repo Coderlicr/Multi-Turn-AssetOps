@@ -6,6 +6,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
 from agent.supervisor_specialist.agents.data_collection import DataCollectionSpecialist
 from agent.supervisor_specialist.agents.failure_reasoning import FailureReasoningSpecialist
 from agent.supervisor_specialist.agents.maintenance_planning import MaintenancePlanningSpecialist
@@ -16,9 +19,26 @@ from agent.supervisor_specialist.runtime.artifact_store import ArtifactStore
 from agent.supervisor_specialist.runtime.behavior_log import BehaviorLog
 from agent.supervisor_specialist.runtime.event_stream import EventStream
 from agent.supervisor_specialist.runtime.mcp_tools import DEFAULT_SERVER_PATHS, MCPToolClient
-from agent.supervisor_specialist.schemas import CaseState, GraphState, TimeWindow
+from agent.supervisor_specialist.schemas import (
+    ArtifactEnvelope,
+    CaseState,
+    ConversationMemory,
+    DialogTurnRecord,
+    GraphState,
+    TimeWindow,
+    ToolCallSummary,
+)
 
 _DEFAULT_LOOKBACK_DAYS = 30
+
+_CHECKPOINT_TYPES = (
+    ArtifactEnvelope,
+    CaseState,
+    ConversationMemory,
+    DialogTurnRecord,
+    TimeWindow,
+    ToolCallSummary,
+)
 
 
 def _make_case_id() -> str:
@@ -58,15 +78,19 @@ class SupervisorSpecialistRunner:
         quiet: bool = False,
         log_dir: Path | None = None,
         reference_date: str | None = None,
+        mcp_tools: MCPToolClient | None = None,
     ) -> None:
         self._llm = llm
         self._max_steps = max_steps
         self._ref = _resolve_reference_date(reference_date)
+        self._dialog_thread_id = f"dialog_{uuid.uuid4().hex}"
+        self._dialog_started = False
+        self._last_dialog_state: GraphState | None = None
 
         artifact_store = ArtifactStore()
         event_stream = EventStream(quiet=quiet)
         behavior_log = BehaviorLog(log_dir=log_dir)
-        mcp_tools = MCPToolClient(server_paths=server_paths or DEFAULT_SERVER_PATHS)
+        mcp_tools = mcp_tools or MCPToolClient(server_paths=server_paths or DEFAULT_SERVER_PATHS)
 
         supervisor = SupervisorAgent(
             llm=llm,
@@ -97,12 +121,47 @@ class SupervisorSpecialistRunner:
             llm=llm,
         )
 
-        self._graph = build_graph(deps)
+        serde = JsonPlusSerializer(allowed_msgpack_modules=_CHECKPOINT_TYPES)
+        self._graph = build_graph(deps, checkpointer=MemorySaver(serde=serde))
 
     async def run(self, question: str) -> str:
         case_state = self._init_case_state(question)
-        initial_state: GraphState = {
+        initial_state = self._initial_state(question, case_state)
+        config = {"configurable": {"thread_id": case_state.case_id}}
+        result = await self._graph.ainvoke(initial_state, config=config)
+        return result.get("final_response") or "(no response generated)"
+
+    async def run_turn(self, question: str) -> str:
+        """Run one turn in the runner's in-memory multi-turn dialog session."""
+        config = {"configurable": {"thread_id": self._dialog_thread_id}}
+        if self._dialog_started:
+            input_state: GraphState = {
+                "current_user_message": question,
+                "max_steps": self._max_steps,
+            }
+        else:
+            case_state = self._init_case_state(question)
+            input_state = self._initial_state(question, case_state)
+
+        result = await self._graph.ainvoke(input_state, config=config)
+        self._dialog_started = True
+        self._last_dialog_state = result
+        return result.get("final_response") or "(no response generated)"
+
+    @property
+    def last_dialog_state(self) -> GraphState | None:
+        return self._last_dialog_state
+
+    def _initial_state(self, question: str, case_state: CaseState) -> GraphState:
+        return {
             "case_state": case_state,
+            "current_user_message": question,
+            "conversation_memory": ConversationMemory(
+                active_site=case_state.site,
+                active_asset_ids=case_state.asset_ids,
+                active_time_window=case_state.time_window,
+                focus_metrics=case_state.focus_metrics,
+            ),
             "current_task": None,
             "last_artifacts": [],
             "final_response": None,
@@ -110,9 +169,10 @@ class SupervisorSpecialistRunner:
             "step_count": 0,
             "max_steps": self._max_steps,
             "error_message": None,
+            "turn_index": 0,
+            "turn_artifact_ids": [],
+            "turn_tool_calls": [],
         }
-        result = await self._graph.ainvoke(initial_state)
-        return result.get("final_response") or "(no response generated)"
 
     def _init_case_state(self, question: str) -> CaseState:
         return CaseState(

@@ -2,6 +2,7 @@
 
 Usage:
   supervisor-specialist "question"
+  supervisor-specialist --multi-turn "question"
   supervisor-specialist --model-id watsonx/... "question"
   supervisor-specialist --no-stream --no-log "question"
 """
@@ -21,7 +22,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="supervisor-specialist",
         description="Multi-agent industrial asset operations system (Supervisor-Specialist).",
     )
-    p.add_argument("question", help="The user question to answer.")
+    p.add_argument("question", nargs="?", help="The user question to answer.")
     p.add_argument(
         "--model-id",
         default=os.environ.get("SS_MODEL_ID", _DEFAULT_MODEL),
@@ -49,13 +50,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="YYYY-MM-DD",
         help="Anchor date for time window computation (default: today UTC). E.g. 2020-06-20",
     )
+    p.add_argument(
+        "--multi-turn",
+        action="store_true",
+        help="Enter a REPL and retain supervisor-specialist memory across turns.",
+    )
     return p
 
 
-def main() -> None:
-    parser = _build_parser()
-    args = parser.parse_args()
-
+async def _run(args: argparse.Namespace) -> None:
     from llm.litellm import LiteLLMBackend
     from agent.supervisor_specialist.runner import SupervisorSpecialistRunner
 
@@ -77,13 +80,39 @@ def main() -> None:
         reference_date=args.reference_date,
     )
 
+    if not args.multi_turn:
+        response = await runner.run(args.question)
+        print(response)
+        return
+
+    if args.question:
+        print(await runner.run_turn(args.question))
+
+    while True:
+        try:
+            question = input("> ").strip()
+        except EOFError:
+            print()
+            break
+
+        if not question:
+            continue
+        if question.lower() in {"exit", "quit"}:
+            break
+        print(await runner.run_turn(question))
+
+
+def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args()
+    if not args.question and not args.multi_turn:
+        parser.error("the following arguments are required: question")
+
     try:
-        response = asyncio.run(runner.run(args.question))
+        asyncio.run(_run(args))
     except KeyboardInterrupt:
         print("\n[interrupted]", file=sys.stderr)
         sys.exit(1)
-
-    print(response)
 
 
 if __name__ == "__main__":

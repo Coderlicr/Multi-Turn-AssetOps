@@ -6,7 +6,11 @@ import json
 import logging
 from datetime import datetime
 
-from agent.supervisor_specialist._utils import call_llm, parse_json_from_llm
+from agent.supervisor_specialist._utils import (
+    call_llm,
+    format_conversation_memory,
+    parse_json_from_llm,
+)
 from agent.supervisor_specialist.runtime.artifact_store import ArtifactStore
 from agent.supervisor_specialist.runtime.behavior_log import BehaviorLog
 from agent.supervisor_specialist.runtime.event_stream import EventStream
@@ -14,8 +18,6 @@ from agent.supervisor_specialist.schemas import (
     CaseState,
     GraphState,
     SupervisorDecision,
-    TaskEnvelope,
-    ToolCallLog,
 )
 
 _log = logging.getLogger(__name__)
@@ -26,6 +28,9 @@ You coordinate specialist agents to answer user questions about industrial asset
 
 Today (UTC): {today}
 
+Latest user message:
+{current_user_message}
+
 Available specialists:
 - data_collection_specialist: Collects IoT sensor data, work orders, events, alert rules, asset/sensor inventory
 - time_series_analysis_specialist: Performs trend analysis, forecasting, and anomaly detection on time-series data
@@ -34,6 +39,9 @@ Available specialists:
 
 Current case state:
 {case_state_json}
+
+Structured conversation memory:
+{conversation_memory}
 
 Already collected artifacts:
 {artifacts_summary}
@@ -51,6 +59,8 @@ Decision rules:
 - Use time_series_analysis_specialist after data collection to detect anomalies/trends
 - Use failure_reasoning_specialist after anomaly detection to identify root causes
 - Use maintenance_planning_specialist when diagnosis is complete and action plan is needed
+- For follow-up questions, reuse conversation memory and prior artifact IDs instead of restarting from scratch
+- If the latest user question can be answered from conversation memory and existing artifacts, go directly to respond_to_user
 - Go to respond_to_user when the user's goal is answered or when step_count >= {steps_before_respond}
 - Do NOT call the same specialist for the exact same purpose twice
 - When calling a specialist, include all relevant artifact IDs in input_artifacts
@@ -103,6 +113,10 @@ _VALID_NEXT_NODES = {
 }
 
 
+def _turn_id(state: GraphState) -> str:
+    return f"turn_{state.get('turn_index', 1):03d}"
+
+
 class SupervisorAgent:
     role = "supervisor"
 
@@ -136,6 +150,7 @@ class SupervisorAgent:
                 tool_calls=[],
                 output_artifact_ids=[],
                 status="ok",
+                turn_id=_turn_id(state),
             )
             return {
                 **state,
@@ -157,6 +172,8 @@ class SupervisorAgent:
         # Build artifacts summary for prompt
         existing_artifacts = self.artifact_store.get_many(case_state.artifact_ids)
         artifacts_summary = self._format_artifacts_summary(existing_artifacts)
+        conversation_memory = state.get("conversation_memory")
+        current_user_message = state.get("current_user_message") or case_state.user_goal
 
         error_msg = state.get("error_message") or "none"
         steps_before_respond = max(max_steps - 2, 1)
@@ -167,7 +184,9 @@ class SupervisorAgent:
 
         prompt = _SUPERVISOR_PROMPT.format(
             today=today,
+            current_user_message=current_user_message,
             case_state_json=case_state.model_dump_json(indent=2),
+            conversation_memory=format_conversation_memory(conversation_memory),
             artifacts_summary=artifacts_summary,
             error_message=error_msg,
             step_count=step_count,
@@ -191,6 +210,7 @@ class SupervisorAgent:
                 tool_calls=[],
                 output_artifact_ids=[],
                 status="failed",
+                turn_id=_turn_id(state),
             )
             return {
                 **state,
@@ -212,6 +232,7 @@ class SupervisorAgent:
             tool_calls=[],
             output_artifact_ids=[],
             status="ok",
+            turn_id=_turn_id(state),
         )
 
         self.event_stream.emit(
