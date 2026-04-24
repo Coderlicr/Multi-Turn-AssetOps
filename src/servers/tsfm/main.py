@@ -193,7 +193,12 @@ def run_tsfm_forecasting(
         id_columns: ID columns for multi-entity grouped time series.
         frequency_sampling: Sampling frequency string (e.g. '15_minutes') or
             'oov' to auto-detect from the data.
-        autoregressive_modeling: Use autoregressive inference when True.
+        autoregressive_modeling: Set True (default) for pure time-series prediction
+            using the series' own past values. Only set False if you have exogenous
+            features in conditional_columns — without them False will always error.
+            IMPORTANT: if you want to then run anomaly detection, call run_tsad with
+            a SINGLE target column at a time. For multi-column anomaly detection use
+            run_integrated_tsad instead (it handles per-column looping automatically).
         include_dataquality_summary: Attach a data-quality report to the result.
     """
     if not model_checkpoint:
@@ -476,7 +481,12 @@ def run_tsad(
         conditional_columns: Exogenous feature columns.
         id_columns: ID columns for grouped time series.
         frequency_sampling: Sampling frequency string or None to auto-detect.
-        autoregressive_modeling: Use autoregressive mode when True.
+        autoregressive_modeling: Set True (default) for pure time-series prediction
+            using the series' own past values. Only set False if you have exogenous
+            features in conditional_columns — without them False will always error.
+            IMPORTANT: tsfm_output_json must come from a SINGLE-column
+            run_tsfm_forecasting call. For multi-column anomaly detection use
+            run_integrated_tsad which handles per-column looping automatically.
     """
     frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
     if _freq_err:
@@ -622,7 +632,11 @@ def run_integrated_tsad(
         conditional_columns: Exogenous feature columns.
         id_columns: ID columns for grouped time series.
         frequency_sampling: Sampling frequency string or '' to auto-detect.
-        autoregressive_modeling: Use autoregressive mode when True.
+        autoregressive_modeling: Set True (default) for pure time-series prediction
+            using the series' own past values. Only set False if you have exogenous
+            features in conditional_columns — without them False will always error.
+            This is the recommended tool for multi-column anomaly detection: it runs
+            forecasting + anomaly detection per column automatically.
     """
     if not model_checkpoint:
         model_checkpoint = "ttm_96_28"

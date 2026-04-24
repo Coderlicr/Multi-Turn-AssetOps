@@ -136,7 +136,7 @@ def csv_stats(
             "trend_slope": round(slope, 6),
         }
 
-    return json.dumps({"csv_path": csv_path, "stats": stats})
+    return json.dumps({"csv_path": csv_path, "all_columns": list(df.columns), "stats": stats})
 
 
 def main():

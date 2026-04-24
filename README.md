@@ -15,6 +15,12 @@ To verify the imported sample data:
 python src/couchdb/check_couchdb_data.py
 ```
 
+Supervisor-Specialists Architecture Examples:
+```
+uv run supervisor-specialist --reference-date 2020-06-20 "The temperature of our chiller at Site MAIN seems unusually high lately. Can you look into it?"
+uv run supervisor-specialist --reference-date 2020-06-20 "I want to compare the efficiency of Chiller 6 and Chiller 9 at the MAIN site over the past month."
+```
+
 Your `.env` file should be like (fill `WATSONX_APIKEY` and `WATSONX_PROJECT_ID` first):
 ```
 # ── CouchDB (IoTAgent server) ────────────────────────────────────────────────
