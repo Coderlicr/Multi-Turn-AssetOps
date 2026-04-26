@@ -99,9 +99,9 @@ These 16 multi-turn dialog scenarios are designed to evaluate the proposed close
 | Turn | header | Action / Response | Tool Domain(s) |
 | :---- | :---- | :---- | :---- |
 | 1 | User | I want to set up an early detection system for condenser water side fouling on Chiller 9\. |  |
-| 1 | System | Calls FMSR tools: `get_failure_modes(Chiller 9)` and `get_failure_mode_sensor_mapping(...)` to identify relevant sensors: Condenser Water Flow, Condenser Water Return To Tower Temperature, Chiller Efficiency, Supply Temperature. | FMSR |
+| 1 | System | Calls FMSR tools: `get_failure_modes(Chiller 9)` and `get_failure_mode_sensor_mapping(...)` to identify relevant sensors: Condenser Water Flow, Condenser Water Supply To Chiller Temperature, Chiller Efficiency, Supply Temperature. | FMSR |
 | 2 | User | Which sensors should I prioritize for the detection model? |  |
-| 2 | System | Based on FMSR analysis, recommends: primary indicators are Condenser Water Flow and Condenser Water Return To Tower Temperature. Secondary indicators: Chiller Efficiency and Power Input. Suggests an ML recipe with these as feature sensors and Condenser Water Flow as the target. | FMSR |
+| 2 | System | Based on FMSR analysis, recommends: primary indicators are Condenser Water Flow and Condenser Water Supply To Chiller Temperature. Secondary indicators: Chiller Efficiency and Power Input. Suggests an ML recipe with these as feature sensors and Condenser Water Flow as the target. | FMSR |
 | 3 | User | Can you fine-tune a forecasting model using our historical data? |  |
 | 3 | System | Uses IoT `history_csv` to export historical Chiller 9 data, then calls TSFM `run_tsfm_finetuning` with `timestamp` as the time column and `Chiller 9 Condenser Water Flow` as the target column. Model is fine-tuned and saved. Evaluation metrics are reported. | IoT, TSFM |
 | 4 | User | Now run anomaly detection on the last two months of data to validate. |  |
@@ -132,7 +132,7 @@ These 16 multi-turn dialog scenarios are designed to evaluate the proposed close
 | 4 | System | Based on historical patterns and prediction, recommends scheduling a maintenance window. Suggested scope: Freon level check, electrical inspection, and general inspection can be bundled. Estimated duration: 2 days. | WO |
 
 
-## **Dialog 5: Anomaly Surge Investigation (June 2020\)**
+## **Dialog 5: Anomaly Surge Investigation (June 2021\)**
 
 | Category | Incident Response |
 | :---- | :---- |
@@ -144,14 +144,14 @@ These 16 multi-turn dialog scenarios are designed to evaluate the proposed close
 
 | Turn | header | Action / Response | Tool Domain(s) |
 | :---- | :---- | :---- | :---- |
-| 1 | User | I am reviewing operations for early July 2020\. How did Chiller 9 (CWC04009) perform in June 2020? |  |
-| 1 | System | Calls WO `get_events` for CWC04009 in June 2020. Summary: 3 work order events, 30 alert events (Chiller - Evaporator Approach High), 30 anomaly events across Cooling Load, Flow Efficiency, Delta Setpoint, Delta Temperature. | WO |
+| 1 | User | I am reviewing operations for early July 2021\. How did Chiller 9 (CWC04009) perform in June 2021? |  |
+| 1 | System | Calls WO `get_events` for CWC04009 in June 2021. Retrieves work order events from `wo_events` table and alert trigger records from `alert_events` table (coverage: 2021-01-01 to 2022-09-09). Summary: 3 work order events, multiple Chiller - Evaporator Approach High alert triggers, anomaly events across Cooling Load, Flow Efficiency, Delta Setpoint, Delta Temperature. | WO |
 | 2 | User | That is a lot of alerts. Which ones are meaningful vs. spurious? |  |
-| 2 | System | Analyzes alert patterns. The Evaporator Approach High alerts are persistent (30 out of 30 days), strongly indicating a real issue rather than noise. Anomaly breakdown: Cooling Load (12), Flow Efficiency (9), Delta Setpoint (6), Delta Temperature (3). The co-occurrence of multiple KPI anomalies reinforces a genuine equipment issue. | WO |
+| 2 | System | Analyzes alert patterns from `alert_events`. The Evaporator Approach High alerts are persistent across the month, strongly indicating a real issue rather than noise. Cross-references `alert_rule_fc_mapping` to confirm the rule (RUL0018 - Chiller - Evaporator Approach High) maps to evaporator-related failure codes. The co-occurrence of multiple KPI anomalies reinforces a genuine equipment issue. | WO |
 | 3 | User | What is the root cause based on the sensor data? |  |
-| 3 | System | Calls IoT `history_csv` for Chiller 9 key sensors in June 2020, runs TSFM `run_integrated_tsad`, then uses FMSR `get_failure_modes` and `get_failure_mode_sensor_mapping` to map anomaly patterns to failure modes. The sustained Evaporator Approach High pattern combined with Flow Efficiency anomalies points to Evaporator Water side fouling as the most likely root cause — Confidence: Moderate (55–65%). Supporting evidence: approach anomalies are strongly load-correlated (87% occur during high cooling loads), efficiency degradation worsens at peak demand, flow rates are within normal range (ruling out pump or valve issues). Secondary concern: Possible low refrigerant charge (Confidence: 25–30%) — refrigerant evaporator temperatures show slight downward drift under high load, which is not fully explained by fouling alone. Recommend inspecting evaporator tubes first; if efficiency does not recover, escalate to refrigerant charge inspection. | IoT, TSFM, FMSR |
+| 3 | System | Calls IoT `history_csv` for Chiller 9 key sensors in June 2021, runs TSFM `run_integrated_tsad`, then uses FMSR `get_failure_modes` and `get_failure_mode_sensor_mapping` to map anomaly patterns to failure modes. The sustained Evaporator Approach High pattern combined with Flow Efficiency anomalies points to Evaporator Water side fouling as the most likely root cause — Confidence: Moderate (55–65%). Supporting evidence: approach anomalies are strongly load-correlated (87% occur during high cooling loads), efficiency degradation worsens at peak demand, flow rates are within normal range (ruling out pump or valve issues). Secondary concern: Possible low refrigerant charge (Confidence: 25–30%) — refrigerant evaporator temperatures show slight downward drift under high load, which is not fully explained by fouling alone. Recommend inspecting evaporator tubes first; if efficiency does not recover, escalate to refrigerant charge inspection. | IoT, TSFM, FMSR |
 | 4 | User | Were any corrective work orders already created for this? |  |
-| 4 | System | Calls WO `get_corrective_work_orders` for CWC04009 in June 2020. Found 1 corrective work order (MT010 - general corrective). However, it does not specifically address evaporator fouling. A targeted work-order draft is recommended. | WO |
+| 4 | System | Calls WO `get_corrective_work_orders` for CWC04009 in June 2021. Found 1 corrective work order (MT010 - general corrective). However, it does not specifically address evaporator fouling. A targeted work-order draft is recommended. | WO |
 
 
 ## **Dialog 6: Sensor Exploration & Capability Discovery**
@@ -362,15 +362,15 @@ These 16 multi-turn dialog scenarios are designed to evaluate the proposed close
 | Turn | header | Action / Response | Tool Domain(s) |
 | :---- | :---- | :---- | :---- |
 | 1 | User | We are building an early detection and remediation system for potential failures on Chiller 9 at the MAIN site. Start by reviewing the past 2 months of performance. |  |
-| 1 | System | Calls IoT tools: `sites`, `assets(MAIN)`, `sensors(MAIN, Chiller 9)`, then `history_csv` for the period 2020-05-01 to 2020-06-30. Presents a performance dashboard: average efficiency, tonnage utilization, temperature differentials. | IoT |
+| 1 | System | Calls IoT tools: `sites`, `assets(MAIN)`, `sensors(MAIN, Chiller 9)`, then `history_csv` for the period 2021-05-01 to 2021-06-30. Presents a performance dashboard: average efficiency, tonnage utilization, temperature differentials. | IoT |
 | 2 | User | Run anomaly detection and identify any operation violations. |  |
-| 2 | System | Calls TSFM `run_integrated_tsad` on selected Chiller 9 sensor columns and WO event/alert retrieval for the same period. Results: 30 Evaporator Approach High alerts in June. Anomalies detected: Cooling Load (12 instances), Flow Efficiency (9), Delta Setpoint (6), Delta Temperature (3). | TSFM, WO |
+| 2 | System | Calls TSFM `run_integrated_tsad` on selected Chiller 9 sensor columns. Also calls WO `get_events` for CWC04009 in May–June 2021, retrieving work order events from `wo_events` and alert trigger records from `alert_events` (valid coverage: 2021-01-01 to 2022-09-09). Results: multiple Evaporator Approach High alert triggers in June 2021 (rule RUL0018). Sensor anomalies detected: Cooling Load (12 instances), Flow Efficiency (9), Delta Setpoint (6), Delta Temperature (3). | TSFM, WO |
 | 3 | User | Diagnose the root cause and assess severity. |  |
 | 3 | System | Calls FMSR `get_failure_modes(Chiller 9)` and `get_failure_mode_sensor_mapping(...)` to cross-reference anomaly patterns. Primary diagnosis: Condenser Water side fouling progressing towards Evaporator Water side fouling — Confidence: Moderate (55–65%). Supporting evidence: flow efficiency anomalies are load-correlated (88% at high cooling loads), efficiency has degraded 18–23% during high approach periods, condenser water flow is reduced while delta-T remains stable (ruling out pump failure). Secondary concern: Possible low refrigerant charge (Confidence: 25–30%) — refrigerant evaporator temperatures show slight downward drift under peak load, inconsistent with fouling alone. Severity: Moderate but escalating. Without intervention, estimated 4–6 weeks to critical failure under peak summer load conditions. | FMSR |
 | 4 | User | Check if any corrective work orders already exist for this issue. |  |
-| 4 | System | Calls WO `get_work_orders` / `get_corrective_work_orders` for CWC04009 in May-June 2020. Found 3 work orders but none specifically targeting condenser or evaporator fouling. The existing corrective order (MT010) is a general maintenance action. A targeted work-order draft is needed. | WO |
+| 4 | System | Calls WO `get_work_orders` / `get_corrective_work_orders` for CWC04009 in May–June 2021. Found 3 work orders but none specifically targeting condenser or evaporator fouling. The existing corrective order (MT010) is a general maintenance action. A targeted work-order draft is needed. | WO |
 | 5 | User | Good. Summarize everything into a report for management. |  |
-| 5 | System | Generates comprehensive report: 2-month performance review, anomaly findings, root cause diagnosis, existing vs. recommended remediation actions, detection system guidelines, cost-benefit of proactive vs. reactive approach. Recommends quarterly review cadence. | IoT, TSFM, FMSR, WO |
+| 5 | System | Generates comprehensive report: 2-month performance review (May–June 2021), anomaly findings, root cause diagnosis, existing vs. recommended remediation actions, detection system guidelines, cost-benefit of proactive vs. reactive approach. Recommends quarterly review cadence. | IoT, TSFM, FMSR, WO |
 
 
 ## **Dialog 16: Load-Dependent Efficiency Degradation & Refrigerant Loss Diagnosis**
