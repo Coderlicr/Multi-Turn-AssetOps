@@ -128,6 +128,23 @@ class NextWorkOrderPredictionResult(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Alert rules
+# ---------------------------------------------------------------------------
+
+
+class AlertRuleItem(BaseModel):
+    rule_id: str
+    rule_name: str
+
+
+class AlertRulesResult(BaseModel):
+    equipment_id: str
+    total: int
+    rules: List[AlertRuleItem]
+    message: str
+
+
+# ---------------------------------------------------------------------------
 # Alert-to-failure analysis
 # ---------------------------------------------------------------------------
 

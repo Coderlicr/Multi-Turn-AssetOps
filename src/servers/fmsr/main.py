@@ -18,15 +18,20 @@ from __future__ import annotations
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Annotated, Dict, List, Union
 
 import yaml
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 load_dotenv()
+
+_AssetName = Annotated[str, Field(description="Asset name, e.g. 'Chiller 3'. For chillers and AHUs returns a curated list; for other asset types queries the LLM.")]
+_FailureModes = Annotated[List[str], Field(description="List of failure mode names from get_failure_modes. Keep ≤5 to avoid long runtimes.")]
+_SensorsList = Annotated[List[str], Field(description="List of sensor column names from the sensors() tool. Keep ≤10 to avoid long runtimes.")]
 
 _log_level = getattr(logging, os.environ.get("LOG_LEVEL", "WARNING").upper(), logging.WARNING)
 logging.basicConfig(level=_log_level)
@@ -181,7 +186,9 @@ mcp = FastMCP("fmsr")
 
 
 @mcp.tool()
-def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]:
+def get_failure_modes(
+    asset_name: _AssetName,
+) -> Union[FailureModesResult, ErrorResult]:
     """Returns a list of known failure modes for the given asset.
     For chillers and AHUs returns a curated list. For other assets queries the LLM."""
     asset_key = re.sub(r"\d+", "", asset_name).strip().lower()
@@ -207,9 +214,9 @@ def get_failure_modes(asset_name: str) -> Union[FailureModesResult, ErrorResult]
 
 @mcp.tool()
 def get_failure_mode_sensor_mapping(
-    asset_name: str,
-    failure_modes: List[str],
-    sensors: List[str],
+    asset_name: _AssetName,
+    failure_modes: _FailureModes,
+    sensors: _SensorsList,
 ) -> Union[FailureModeSensorMappingResult, ErrorResult]:
     """For each (failure_mode, sensor) pair determines whether the sensor can detect
     the failure. Returns a bidirectional mapping (fm→sensors, sensor→fms) plus
@@ -228,14 +235,20 @@ def get_failure_mode_sensor_mapping(
     if not _llm_available:
         return ErrorResult(error="LLM unavailable")
 
+    pairs = [(fm, s) for fm in failure_modes for s in sensors]
     full_relevancy: List[RelevancyEntry] = []
     fm2sensor: Dict[str, List[str]] = {}
     sensor2fm: Dict[str, List[str]] = {}
 
     try:
-        for s in sensors:
-            for fm in failure_modes:
-                gen = _call_relevancy(asset_name, fm, s)
+        with ThreadPoolExecutor(max_workers=min(len(pairs), 8)) as pool:
+            future_to_pair = {
+                pool.submit(_call_relevancy, asset_name, fm, s): (fm, s)
+                for fm, s in pairs
+            }
+            for future in as_completed(future_to_pair):
+                fm, s = future_to_pair[future]
+                gen = future.result()
                 entry = RelevancyEntry(
                     asset_name=asset_name,
                     failure_mode=fm,

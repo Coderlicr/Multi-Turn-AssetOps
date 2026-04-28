@@ -29,7 +29,9 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "fmsr": "fmsr-mcp-server",
     "tsfm": "tsfm-mcp-server",
     "wo": "wo-mcp-server",
-    "vibration": "vibration-mcp-server",
+    # "vibration": "vibration-mcp-server",
+    # vibration server excluded: database only contains Motor_01 test data,
+    # no vibration sensors exist for the chiller assets used in production.
 }
 
 _PLACEHOLDER_RE = re.compile(r"\{step_(\d+)\}")
@@ -39,7 +41,7 @@ Generate the JSON arguments for the tool call below.
 
 Question: {question}
 Tool: {tool}
-Tool parameters: {tool_schema}
+Tool parameters (JSON schema): {tool_schema}
 Task: {task}
 
 Prior step results:
@@ -50,6 +52,13 @@ Do not write any explanation, reasoning, or prose — output only the JSON objec
 Use EXACTLY the parameter names listed in "Tool parameters" above.
 Use the task description and prior step results to determine the correct argument values.
 If a value comes from a list, use the first relevant element.
+For equipment_id or asset_id parameters, always use the asset name exactly as it appears in prior step results (e.g. "Chiller 6"), never guess numeric ID formats like "CWC04706".
+Date/time values MUST be ISO 8601 strings (e.g. "2025-01-01T00:00:00"). Never use natural language like "1 week ago".
+Today's date is {today}.
+Consistency rules — when the same tool is called for multiple assets in parallel steps:
+- target_columns: use the SAME column(s) for every asset. If the question is about temperature, use only the Supply Temperature column for every asset — do NOT pass all sensors for one asset and one sensor for another.
+- false_alarm: use the SAME value across all parallel TSAD steps (default 0.05 unless the question requires a different threshold).
+- start / final date range: use the SAME start and final for every asset so the time windows are comparable.
 
 JSON:"""
 
@@ -85,14 +94,30 @@ class Executor:
                 descriptions[name] = f"  (unavailable: {exc})"
         return descriptions
 
-    async def execute_plan(self, plan: Plan, question: str) -> list[StepResult]:
+    async def execute_plan(
+        self,
+        plan: Plan,
+        question: str,
+        prior_context: dict[int, "StepResult"] | None = None,
+    ) -> list[StepResult]:
         """Execute all plan steps in dependency order."""
         ordered = plan.resolved_order()
-        total = len(ordered)
+        executable_steps: list[PlanStep] = []
+        # ignore invalid plan steps (e.g. server="none")
+        for step in ordered:
+            if step.server not in self._server_paths:
+                _log.info(
+                    "Skipping step %d [%s]: unknown server.",
+                    step.step_number,
+                    step.server,
+                )
+                continue
+            executable_steps.append(step)
+        total = len(executable_steps)
 
         # Pre-fetch tool schemas for all servers referenced in the plan so that
         # _resolve_args_with_llm can include exact parameter names in its prompt.
-        server_names = {step.server for step in ordered}
+        server_names = {step.server for step in executable_steps}
         tool_schemas: dict[str, dict[str, str]] = {}  # server -> {tool_name -> sig}
         for name in server_names:
             path = self._server_paths.get(name)
@@ -101,18 +126,39 @@ class Executor:
             try:
                 tools = await _list_tools(path)
                 tool_schemas[name] = {
-                    t["name"]: ", ".join(
-                        f"{p['name']}: {p['type']}{'?' if not p['required'] else ''}"
-                        for p in t.get("parameters", [])
-                    )
+                    t["name"]: json.dumps(t["input_schema"])
                     for t in tools
                 }
             except Exception:  # noqa: BLE001
                 tool_schemas[name] = {}
 
-        context: dict[int, StepResult] = {}
+        context: dict[int, StepResult] = dict(prior_context) if prior_context else {}
         results: list[StepResult] = []
-        for step in ordered:
+        for step in executable_steps:
+            failed_deps = [
+                d for d in step.dependencies
+                if d in context and not context[d].success
+            ]
+            if failed_deps:
+                _log.warning(
+                    "Skipping step %d [%s]: dependency step(s) %s failed.",
+                    step.step_number,
+                    step.server,
+                    failed_deps,
+                )
+                skipped = StepResult(
+                    step_number=step.step_number,
+                    task=step.task,
+                    server=step.server,
+                    response="",
+                    error=f"Skipped: dependency step(s) {failed_deps} failed.",
+                    tool=step.tool,
+                    tool_args=step.tool_args,
+                )
+                context[step.step_number] = skipped
+                results.append(skipped)
+                continue
+
             _log.info(
                 "Step %d/%d [%s]: %s",
                 step.step_number,
@@ -174,6 +220,20 @@ class Executor:
             )
 
             response = await _call_tool(server_path, step.tool, resolved_args)
+
+            # Treat tool-level error responses as failures.
+            tool_error = _extract_tool_error(response)
+            if tool_error is not None:
+                return StepResult(
+                    step_number=step.step_number,
+                    task=step.task,
+                    server=step.server,
+                    response=response,
+                    error=tool_error,
+                    tool=step.tool,
+                    tool_args=resolved_args,
+                )
+
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
@@ -182,13 +242,23 @@ class Executor:
                 tool=step.tool,
                 tool_args=resolved_args,
             )
+        except TimeoutError:
+            return StepResult(
+                step_number=step.step_number,
+                task=step.task,
+                server=step.server,
+                response="",
+                error=f"Tool call timed out after {_TOOL_CALL_TIMEOUT}s",
+                tool=step.tool,
+                tool_args=step.tool_args,
+            )
         except Exception as exc:  # noqa: BLE001
             return StepResult(
                 step_number=step.step_number,
                 task=step.task,
                 server=step.server,
                 response="",
-                error=str(exc),
+                error=str(exc) or repr(exc),
                 tool=step.tool,
                 tool_args=step.tool_args,
             )
@@ -206,8 +276,14 @@ async def _resolve_args_with_llm(
     llm: LLMBackend,
 ) -> dict:
     """Generate tool arguments from the task description and prior step results."""
+    from datetime import date
+    _MAX_CTX_CHARS = 2000
     context_text = "\n".join(
-        f"Step {n}: {r.response}" for n, r in sorted(context.items())
+        f"Step {n}: " + (
+            r.response[:_MAX_CTX_CHARS] + "... [truncated]"
+            if len(r.response) > _MAX_CTX_CHARS else r.response
+        )
+        for n, r in sorted(context.items())
     )
     prompt = (
         _ARG_RESOLUTION_PROMPT
@@ -216,6 +292,7 @@ async def _resolve_args_with_llm(
         .replace("{tool}", tool)
         .replace("{tool_schema}", tool_schema or "(unknown)")
         .replace("{context}", context_text or "(none)")
+        .replace("{today}", date.today().isoformat())
     )
     raw = llm.generate(prompt)
     resolved = _parse_json(raw)
@@ -315,22 +392,30 @@ async def _list_tools(server_path: Path | str) -> list[dict]:
                         "name": t.name,
                         "description": t.description or "",
                         "parameters": parameters,
+                        "input_schema": t.inputSchema or {},
                     }
                 )
             return tools
 
 
+_TOOL_CALL_TIMEOUT = 300  # seconds
+
+
 async def _call_tool(server_path: Path | str, tool_name: str, args: dict) -> str:
     """Connect to an MCP server via stdio and call a tool."""
+    import asyncio
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
-    params = _make_stdio_params(server_path)
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool(tool_name, args)
-            return _extract_content(result.content)
+    async def _inner() -> str:
+        params = _make_stdio_params(server_path)
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, args)
+                return _extract_content(result.content)
+
+    return await asyncio.wait_for(_inner(), timeout=_TOOL_CALL_TIMEOUT)
 
 
 def _extract_content(content: list[Any]) -> str:
@@ -352,6 +437,17 @@ def _resolve_args(args: dict, context: dict[int, StepResult]) -> dict:
         else:
             resolved[key] = val
     return resolved
+
+
+def _extract_tool_error(response: str) -> str | None:
+    """Return the error message if the tool response JSON contains an 'error' key."""
+    try:
+        parsed = json.loads(response)
+        if isinstance(parsed, dict) and "error" in parsed:
+            return str(parsed["error"])
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return None
 
 
 def _parse_tool_call(raw: str) -> dict:

@@ -120,12 +120,36 @@ def filter_df(df: pd.DataFrame, conditions: dict) -> pd.DataFrame:
     return filtered
 
 
+_ASSET_NAME_TO_EQUIPMENT_ID: dict[str, str] = {
+    "chiller 1": "CWC04701",
+    "chiller 2": "CWC04702",
+    "chiller 3": "CWC04703",
+    "chiller 4": "CWC04704",
+    "chiller 6": "CWC04006",
+    "chiller 7": "CWC04007",
+    "chiller 9": "CWC04009",
+    "chiller 10": "CWC04010",
+    "chiller 12": "CWC04012",
+    "chiller 13": "CWC04013",
+    "chiller 14": "CWC04014",
+}
+
+
+def normalize_equipment_id(equipment_id: str) -> str:
+    """Translate a human-readable asset name (e.g. 'Chiller 3') to its equipment ID.
+
+    If the value is already a known equipment ID format it is returned unchanged.
+    """
+    return _ASSET_NAME_TO_EQUIPMENT_ID.get(equipment_id.strip().lower(), equipment_id)
+
+
 def parse_date(value: Optional[str]) -> Optional[datetime]:
-    """Parse an ISO date string (YYYY-MM-DD) or raise ValueError."""
+    """Parse a date string; accepts YYYY-MM-DD or ISO 8601 datetime (time part ignored)."""
     if not value:
         return None
+    date_part = value[:10]
     try:
-        return datetime.strptime(value, "%Y-%m-%d")
+        return datetime.strptime(date_part, "%Y-%m-%d")
     except ValueError as exc:
         raise ValueError(f"date must be YYYY-MM-DD, got '{value}'") from exc
 

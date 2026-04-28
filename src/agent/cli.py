@@ -14,9 +14,11 @@ import asyncio
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+_AUTO_SAVE_OUTPUT = "__AUTO_SAVE_OUTPUT__"
 
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
@@ -45,12 +47,13 @@ environment variables:
 
 examples:
   plan-execute "What assets are at site MAIN?"
+  plan-execute --multi-turn "What assets are at site MAIN?"
   plan-execute --model-id watsonx/ibm/granite-3-3-8b-instruct --show-plan "List sensors"
   plan-execute --model-id litellm_proxy/GCP/claude-4-sonnet "What are the failure modes?"
   plan-execute --verbose --show-history --json "How many IoT observations exist for CH-1?"
 """,
     )
-    parser.add_argument("question", help="The question to answer.")
+    parser.add_argument("question", nargs="?", help="The question to answer.")
     parser.add_argument(
         "--model-id",
         default=_DEFAULT_MODEL,
@@ -89,6 +92,21 @@ examples:
         "--verbose",
         action="store_true",
         help="Show INFO-level progress logs on stderr (default: WARNING+ only).",
+    )
+    parser.add_argument(
+        "--multi-turn",
+        action="store_true",
+        help="Enter a simple REPL and retain minimal session state across turns.",
+    )
+    parser.add_argument(
+        "--save-output",
+        nargs="?",
+        const=_AUTO_SAVE_OUTPUT,
+        metavar="PATH",
+        help=(
+            "Persist results to a file as JSONL, one JSON object per line. "
+            "If PATH is omitted, defaults to logs/log_<timestamp>.jsonl."
+        ),
     )
     return parser
 
@@ -142,52 +160,59 @@ def _print_section(title: str) -> None:
 
 async def _run(args: argparse.Namespace) -> None:
     from agent.plan_execute.runner import PlanExecuteRunner
+    from agent.session import SessionState
 
     llm = _build_llm(args.model_id)
     server_paths = _parse_servers(args.servers)
     runner = PlanExecuteRunner(llm=llm, server_paths=server_paths)
-    result = await runner.run(args.question)
+    session = SessionState()
+    args.save_output_path = _prepare_output_path(args)
+
+    if not args.multi_turn:
+        result = await runner.run(args.question)
+        _render_result(result, args)
+        return
+
+    if args.question:
+        result = await runner.run(args.question, session=session)
+        _render_result(result, args)
+
+    while True:
+        try:
+            question = input("> ").strip()
+        except EOFError:
+            print()
+            break
+
+        if not question:
+            continue
+        if question.lower() in {"exit", "quit"}:
+            break
+
+        result = await runner.run(question, session=session)
+        _render_result(result, args)
+
+
+def _render_result(result, args: argparse.Namespace) -> None:
+    output = _result_to_output(result)
+
+    if args.save_output_path is not None:
+        _write_output_file(args.save_output_path, output, multi_turn=args.multi_turn)
 
     if args.output_json:
-        output = {
-            "question": result.question,
-            "answer": result.answer,
-            "plan": [
-                {
-                    "step": s.step_number,
-                    "task": s.task,
-                    "server": s.server,
-                    "tool": s.tool,
-                    "tool_args": s.tool_args,
-                    "dependencies": s.dependencies,
-                    "expected_output": s.expected_output,
-                }
-                for s in result.plan.steps
-            ],
-            "history": [
-                {
-                    "step": r.step_number,
-                    "task": r.task,
-                    "server": r.server,
-                    "tool": r.tool,
-                    "tool_args": r.tool_args,
-                    "response": r.response,
-                    "error": r.error,
-                    "success": r.success,
-                }
-                for r in result.history
-            ],
-        }
         print(json.dumps(output, indent=2))
         return
 
     if args.show_plan:
-        _print_section("Plan")
-        for step in result.plan.steps:
-            deps = ", ".join(f"#{d}" for d in step.dependencies) or "none"
-            print(f"  [{step.step_number}] {step.server}: {step.task}")
-            print(f"       tool: {step.tool}  args: {step.tool_args}")
-            print(f"       deps={deps} | expected: {step.expected_output}")
+        all_plans = [result.plan] + result.replans
+        for i, p in enumerate(all_plans):
+            label = "Plan" if i == 0 else f"Replan {i}"
+            _print_section(label)
+            for step in p.steps:
+                deps = ", ".join(f"#{d}" for d in step.dependencies) or "none"
+                print(f"  [{step.step_number}] {step.server}: {step.task}")
+                print(f"       tool: {step.tool}  args: {step.tool_args}")
+                print(f"       deps={deps} | expected: {step.expected_output}")
 
     if args.show_history:
         _print_section("Execution History")
@@ -205,10 +230,78 @@ async def _run(args: argparse.Namespace) -> None:
     print()
 
 
+def _plan_to_list(plan) -> list:
+    return [
+        {
+            "step": s.step_number,
+            "task": s.task,
+            "server": s.server,
+            "tool": s.tool,
+            "tool_args": s.tool_args,
+            "dependencies": s.dependencies,
+            "expected_output": s.expected_output,
+        }
+        for s in plan.steps
+    ]
+
+
+def _result_to_output(result) -> dict:
+    all_plans = [{"label": "original", "steps": _plan_to_list(result.plan)}] + [
+        {"label": f"replan_{i + 1}", "steps": _plan_to_list(p)}
+        for i, p in enumerate(result.replans)
+    ]
+    return {
+        "question": result.question,
+        "answer": result.answer,
+        "plans": all_plans,
+        "history": [
+            {
+                "step": r.step_number,
+                "task": r.task,
+                "server": r.server,
+                "tool": r.tool,
+                "tool_args": r.tool_args,
+                "response": r.response,
+                "error": r.error,
+                "success": r.success,
+            }
+            for r in result.history
+        ],
+    }
+
+
+def _write_output_file(path: Path, output: dict, multi_turn: bool) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if multi_turn else "w"
+    with path.open(mode, encoding="utf-8") as f:
+        f.write(json.dumps(output, ensure_ascii=True))
+        f.write("\n")
+
+
+def _resolve_output_path(raw_path: str, multi_turn: bool) -> Path:
+    if raw_path != _AUTO_SAVE_OUTPUT:
+        return Path(raw_path)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    del multi_turn
+    return Path("logs") / f"log_{timestamp}.jsonl"
+
+
+def _prepare_output_path(args: argparse.Namespace) -> Path | None:
+    if not args.save_output:
+        return None
+    return _resolve_output_path(args.save_output, multi_turn=args.multi_turn)
+
+
 def main() -> None:
     from dotenv import load_dotenv
     load_dotenv()
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    args = parser.parse_args()
+    if not args.question and not args.multi_turn:
+        parser.error("the following arguments are required: question")
+    if args.multi_turn and args.output_json:
+        parser.error("--json is not supported with --multi-turn")
     _setup_logging(args.verbose)
     asyncio.run(_run(args))
 

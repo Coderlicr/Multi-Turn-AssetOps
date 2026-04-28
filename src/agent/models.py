@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .plan_execute.models import Plan, StepResult
 
@@ -15,3 +15,4 @@ class OrchestratorResult:
     answer: str
     plan: Plan
     history: list[StepResult]
+    replans: list[Plan] = field(default_factory=list)

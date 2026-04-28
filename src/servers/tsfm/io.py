@@ -17,7 +17,7 @@ import pandas as pd
 
 
 _DEFAULT_MODELS_DIR = os.path.join(
-    os.path.dirname(__file__), "artifacts", "output", "tuned_models"
+    os.path.dirname(__file__), "artifacts", "tsfm_models"
 )
 
 

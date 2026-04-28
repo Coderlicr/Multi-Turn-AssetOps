@@ -21,8 +21,11 @@ from .executor import Executor
 from .planner import Planner
 from ..models import OrchestratorResult
 from ..runner import AgentRunner
+from ..session import SessionState
 
 _log = logging.getLogger(__name__)
+
+_MAX_REPLAN_ATTEMPTS = 2
 
 _SUMMARIZE_PROMPT = """\
 You are summarizing the results of a multi-step task execution for an \
@@ -33,8 +36,22 @@ Original question: {question}
 Step-by-step execution results:
 {results}
 
-Provide a concise, direct answer to the original question based on the results
-above. Do not repeat the individual steps — just give the final answer.
+Provide a concise, direct answer to the original question based on the results above.
+Rules:
+- Do not repeat the individual steps — just give the final answer.
+- Read the question type before framing the answer:
+  * Fault / anomaly / "what's wrong" questions: identify the primary concern asset \
+by name and lead with it (highest anomaly count, highest mean, increasing trend).
+  * Comparison questions ("compare", "which is more efficient", "difference between"): \
+summarise the differences objectively — do NOT label one asset as "primary concern" \
+unless the data clearly shows a fault.
+  * Prediction / forecast questions: state the predicted outcome with the supporting numbers.
+- State conclusions directly. Do not end with "further investigation is recommended" \
+unless no data supports a conclusion.
+- Include specific numbers (mean, anomaly count, trend direction, slope) to back up claims.
+- Do not interpret a higher or lower metric value as good or bad unless the metric name \
+makes it unambiguous (e.g. "anomaly_count", "error_rate" are bad when high; \
+"efficiency" direction depends on context — state the value and trend, not a judgement).
 """
 
 
@@ -67,7 +84,11 @@ class PlanExecuteRunner(AgentRunner):
         self._planner = Planner(llm)
         self._executor = Executor(llm, server_paths)
 
-    async def run(self, question: str) -> OrchestratorResult:
+    async def run(
+        self,
+        question: str,
+        session: SessionState | None = None,
+    ) -> OrchestratorResult:
         """Run the full plan-execute loop for a question.
 
         Steps:
@@ -78,37 +99,92 @@ class PlanExecuteRunner(AgentRunner):
 
         Args:
             question: The user question to answer.
+            session: Optional conversation state reused across turns.
 
         Returns:
             OrchestratorResult with the final answer, the generated plan, and
             the per-step execution history.
         """
+        effective_question = (
+            session.build_question(question) if session is not None else question
+        )
+        print("[DEBUG] Question of this turn:")
+        print(effective_question)
+
         # 1. Discover
         _log.info("Discovering server capabilities...")
         server_descriptions = await self._executor.get_server_descriptions()
 
         # 2. Plan
         _log.info("Planning...")
-        plan = self._planner.generate_plan(question, server_descriptions)
+        plan = self._planner.generate_plan(effective_question, server_descriptions)
         _log.info("Plan has %d step(s).", len(plan.steps))
 
-        # 3. Execute
-        history = await self._executor.execute_plan(plan, question)
+        # 3. Execute (with replan loop on failures)
+        original_plan = plan
+        replans: list = []
+        accumulated_context: dict[int, object] = {}
+
+        round_history = await self._executor.execute_plan(plan, effective_question)
+        for r in round_history:
+            accumulated_context[r.step_number] = r
+        history = round_history
+        next_step = max(s.step_number for s in plan.steps) + 1
+
+        for attempt in range(_MAX_REPLAN_ATTEMPTS):
+            # Only check the most recent round — already-repaired failures are ignored.
+            failed = [r for r in round_history if not r.success]
+            if not failed:
+                break
+            _log.info(
+                "Replan attempt %d/%d: %d failed step(s).",
+                attempt + 1,
+                _MAX_REPLAN_ATTEMPTS,
+                len(failed),
+            )
+            replan = self._planner.generate_replan(
+                question=effective_question,
+                original_plan=original_plan,
+                history=history,
+                server_descriptions=server_descriptions,
+                next_step_number=next_step,
+            )
+            if not replan.steps:
+                _log.warning("Replan produced no steps; stopping.")
+                break
+            _log.info("Replan has %d new step(s).", len(replan.steps))
+            replans.append(replan)
+            next_step = max(s.step_number for s in replan.steps) + 1
+            round_history = await self._executor.execute_plan(
+                replan, effective_question, prior_context=accumulated_context
+            )
+            for r in round_history:
+                accumulated_context[r.step_number] = r
+            history = history + round_history
 
         # 4. Summarise
         _log.info("Summarising...")
+        _MAX_RESPONSE_CHARS = 2000
         results_text = "\n\n".join(
             f"Step {r.step_number} — {r.task} (server: {r.server}):\n"
-            + (r.response if r.success else f"ERROR: {r.error}")
+            + (
+                (r.response[:_MAX_RESPONSE_CHARS] + "... [truncated]"
+                 if len(r.response) > _MAX_RESPONSE_CHARS else r.response)
+                if r.success else f"ERROR: {r.error}"
+            )
             for r in history
         )
         answer = self._llm.generate(
             _SUMMARIZE_PROMPT.format(question=question, results=results_text)
         )
 
-        return OrchestratorResult(
+        result = OrchestratorResult(
             question=question,
             answer=answer,
-            plan=plan,
+            plan=original_plan,
+            replans=replans,
             history=history,
         )
+        if session is not None:
+            session.record_turn(question=question, answer=answer, history=history)
+        return result

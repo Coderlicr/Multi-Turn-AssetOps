@@ -28,7 +28,35 @@ import logging
 import os
 import tempfile
 import uuid
-from typing import List, Optional, Union
+from pathlib import Path
+
+_TMP_BASE = Path(tempfile.gettempdir()) / "assetops"
+from typing import Annotated, List, Optional, Union
+from pydantic import Field
+
+_DatasetPath = Annotated[str, Field(description="Absolute path to a CSV file, e.g. the csv_path returned by history_csv.")]
+_TimestampColumn = Annotated[str, Field(description="Name of the timestamp column in the dataset, e.g. 'timestamp'.")]
+_TargetColumns = Annotated[List[str], Field(description="Sensor column names to analyse. Use the full names as returned by the sensors() tool, e.g. ['Chiller 3 Supply Temperature']. All columns must belong to the same asset.")]
+_ModelCheckpoint = Annotated[Optional[str], Field(description="Pre-trained TTM model name: 'ttm_96_28' (context=96, default) or 'ttm_512_96' (context=512). Omit to use the default.")]
+_FalseAlarm = Annotated[float, Field(description="False alarm rate (0.0–1.0); default 0.05 → 95% coverage. Lower = fewer false positives but may miss real anomalies.")]
+_ConditionalColumns = Annotated[Optional[List[str]], Field(description="Exogenous / conditional feature columns. Pass None unless you have known covariates.")]
+_IdColumns = Annotated[Optional[List[str]], Field(description="ID columns for grouped time series, e.g. ['asset_id']. Pass None for single-entity data.")]
+_AutoregressiveModeling = Annotated[bool, Field(description="Use autoregressive inference; default True. Leave True unless you have a specific reason to disable.")]
+_IncludeDataquality = Annotated[bool, Field(description="Attach a data-quality report to the result; default False.")]
+_FrequencySampling = Annotated[str, Field(description="Sampling frequency: 'hourly', '15_minutes', '10_minutes', '5_minutes', 'half_hourly', 'minutely'. Use '' or 'oov' to auto-detect. Never use ISO 8601 like '1H' or '15T'.")]
+_FrequencySamplingOpt = Annotated[Optional[str], Field(description="Sampling frequency: 'hourly', '15_minutes', '10_minutes', '5_minutes', 'half_hourly', 'minutely'. Use '' or None to auto-detect. Never use ISO 8601 like '1H' or '15T'.")]
+_ForecastHorizonOpt = Annotated[Optional[int], Field(description="Number of steps to forecast; -1 or None uses the model default.")]
+_ForecastHorizon = Annotated[int, Field(description="Steps to forecast; -1 uses the model default.")]
+_SaveModelDir = Annotated[str, Field(description="Directory name to save the fine-tuned model checkpoint (relative to outputs dir).")]
+_NFinetune = Annotated[float, Field(description="Fraction (≤1.0) of samples for fine-tuning; default 0.05.")]
+_NCalibrationFt = Annotated[float, Field(description="Fraction (≤1.0) for calibration set during fine-tuning; default 0.0 (skip calibration).")]
+_NTest = Annotated[float, Field(description="Fraction (≤1.0) for test evaluation; default 0.05.")]
+_TsfmOutputJson = Annotated[str, Field(description="Absolute path to the JSON predictions file returned by run_tsfm_forecasting (the results_file field).")]
+_AdTask = Annotated[str, Field(description="'fit' to train a new AD model (default), 'inference' to load an existing one (requires ad_model_checkpoint).")]
+_AdModelType = Annotated[str, Field(description="Must be exactly 'timeseries_conformal' or 'timeseries_conformal_adaptive'. Do not use any other value.")]
+_AdModelCheckpoint = Annotated[Optional[str], Field(description="Path to an existing AD model checkpoint. Only required when task='inference'.")]
+_AdModelSave = Annotated[Optional[str], Field(description="Directory to save the fitted AD model for later reuse. Omit if you don't need to persist the model.")]
+_NCalibration = Annotated[float, Field(description="Fraction of data for calibration (0.0–1.0), default 0.2. Do NOT use absolute counts like 30 or 1000.")]
 
 import numpy as np
 import pandas as pd
@@ -138,16 +166,16 @@ def get_tsfm_models() -> TSFMModelsResult:
 
 @mcp.tool()
 def run_tsfm_forecasting(
-    dataset_path: str,
-    timestamp_column: str,
-    target_columns: List[str],
-    model_checkpoint: str = "ttm_96_28",
-    forecast_horizon: int = -1,
-    conditional_columns: Optional[List[str]] = None,
-    id_columns: Optional[List[str]] = None,
-    frequency_sampling: str = "oov",
-    autoregressive_modeling: bool = True,
-    include_dataquality_summary: bool = False,
+    dataset_path: _DatasetPath,
+    timestamp_column: _TimestampColumn,
+    target_columns: _TargetColumns,
+    model_checkpoint: _ModelCheckpoint = None,
+    forecast_horizon: _ForecastHorizonOpt = None,
+    conditional_columns: _ConditionalColumns = None,
+    id_columns: _IdColumns = None,
+    frequency_sampling: _FrequencySampling = "oov",
+    autoregressive_modeling: _AutoregressiveModeling = True,
+    include_dataquality_summary: _IncludeDataquality = False,
 ) -> Union[ForecastingResult, ErrorResult]:
     """Run zero-shot time-series forecasting with a TinyTimeMixer (TTM) model.
 
@@ -165,9 +193,21 @@ def run_tsfm_forecasting(
         id_columns: ID columns for multi-entity grouped time series.
         frequency_sampling: Sampling frequency string (e.g. '15_minutes') or
             'oov' to auto-detect from the data.
-        autoregressive_modeling: Use autoregressive inference when True.
+        autoregressive_modeling: Set True (default) for pure time-series prediction
+            using the series' own past values. Only set False if you have exogenous
+            features in conditional_columns — without them False will always error.
+            IMPORTANT: if you want to then run anomaly detection, call run_tsad with
+            a SINGLE target column at a time. For multi-column anomaly detection use
+            run_integrated_tsad instead (it handles per-column looping automatically).
         include_dataquality_summary: Attach a data-quality report to the result.
     """
+    if not model_checkpoint:
+        model_checkpoint = "ttm_96_28"
+    if forecast_horizon is None:
+        forecast_horizon = -1
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not target_columns:
@@ -266,20 +306,20 @@ def run_tsfm_forecasting(
 
 @mcp.tool()
 def run_tsfm_finetuning(
-    dataset_path: str,
-    timestamp_column: str,
-    target_columns: List[str],
-    model_checkpoint: str = "ttm_96_28",
-    save_model_dir: str = "tuned_models",
-    forecast_horizon: int = -1,
-    n_finetune: float = 0.05,
-    n_calibration: float = 0.0,
-    n_test: float = 0.05,
-    conditional_columns: Optional[List[str]] = None,
-    id_columns: Optional[List[str]] = None,
-    frequency_sampling: str = "oov",
-    autoregressive_modeling: bool = True,
-    include_dataquality_summary: bool = False,
+    dataset_path: _DatasetPath,
+    timestamp_column: _TimestampColumn,
+    target_columns: _TargetColumns,
+    model_checkpoint: _ModelCheckpoint = None,
+    save_model_dir: _SaveModelDir = "tuned_models",
+    forecast_horizon: _ForecastHorizon = -1,
+    n_finetune: _NFinetune = 0.05,
+    n_calibration: _NCalibrationFt = 0.0,
+    n_test: _NTest = 0.05,
+    conditional_columns: _ConditionalColumns = None,
+    id_columns: _IdColumns = None,
+    frequency_sampling: _FrequencySampling = "oov",
+    autoregressive_modeling: _AutoregressiveModeling = True,
+    include_dataquality_summary: _IncludeDataquality = False,
 ) -> Union[FinetuningResult, ErrorResult]:
     """Few-shot fine-tune a TinyTimeMixer model on a local dataset.
 
@@ -302,6 +342,11 @@ def run_tsfm_finetuning(
         autoregressive_modeling: Use autoregressive mode when True.
         include_dataquality_summary: Attach a data-quality report to the result.
     """
+    if not model_checkpoint:
+        model_checkpoint = "ttm_96_28"
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not target_columns:
@@ -402,20 +447,20 @@ def run_tsfm_finetuning(
 
 @mcp.tool()
 def run_tsad(
-    dataset_path: str,
-    tsfm_output_json: str,
-    timestamp_column: str,
-    target_columns: List[str],
-    task: str = "fit",
-    false_alarm: float = 0.05,
-    ad_model_type: str = "timeseries_conformal_adaptive",
-    ad_model_checkpoint: Optional[str] = None,
-    ad_model_save: Optional[str] = None,
-    n_calibration: float = 0.2,
-    conditional_columns: Optional[List[str]] = None,
-    id_columns: Optional[List[str]] = None,
-    frequency_sampling: Optional[str] = None,
-    autoregressive_modeling: bool = True,
+    dataset_path: _DatasetPath,
+    tsfm_output_json: _TsfmOutputJson,
+    timestamp_column: _TimestampColumn,
+    target_columns: _TargetColumns,
+    task: _AdTask = "fit",
+    false_alarm: _FalseAlarm = 0.05,
+    ad_model_type: _AdModelType = "timeseries_conformal_adaptive",
+    ad_model_checkpoint: _AdModelCheckpoint = None,
+    ad_model_save: _AdModelSave = None,
+    n_calibration: _NCalibration = 0.2,
+    conditional_columns: _ConditionalColumns = None,
+    id_columns: _IdColumns = None,
+    frequency_sampling: _FrequencySamplingOpt = None,
+    autoregressive_modeling: _AutoregressiveModeling = True,
 ) -> Union[TSADResult, ErrorResult]:
     """Run conformal anomaly detection on TSFM forecasting output.
 
@@ -436,8 +481,16 @@ def run_tsad(
         conditional_columns: Exogenous feature columns.
         id_columns: ID columns for grouped time series.
         frequency_sampling: Sampling frequency string or None to auto-detect.
-        autoregressive_modeling: Use autoregressive mode when True.
+        autoregressive_modeling: Set True (default) for pure time-series prediction
+            using the series' own past values. Only set False if you have exogenous
+            features in conditional_columns — without them False will always error.
+            IMPORTANT: tsfm_output_json must come from a SINGLE-column
+            run_tsfm_forecasting call. For multi-column anomaly detection use
+            run_integrated_tsad which handles per-column looping automatically.
     """
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not tsfm_output_json.strip():
@@ -482,7 +535,8 @@ def run_tsad(
 
     try:
         df = _tsad_output_to_df(output)
-        tmp_dir = tempfile.mkdtemp()
+        _TMP_BASE.mkdir(exist_ok=True)
+        tmp_dir = tempfile.mkdtemp(dir=_TMP_BASE)
         csv_path = os.path.join(tmp_dir, f"tsad_output_{uuid.uuid4()}.csv")
         df.to_csv(csv_path, index=False)
         anomaly_count = (
@@ -507,20 +561,59 @@ def run_tsad(
 
 # ── Integrated TSAD (forecasting + anomaly detection in one call) ─────────────
 
+_VALID_AD_TYPES = {"timeseries_conformal", "timeseries_conformal_adaptive"}
+
+# Maps ISO 8601 duration strings (commonly produced by LLMs) to the internal
+# frequency tokens that TSFM accepts.  Unrecognised values pass through
+# unchanged; forecasting.py will then fall back to auto-detection from
+# timestamps.
+_ISO_TO_TSFM_FREQ: dict[str, str] = {
+    "PT1M":  "minutely",
+    "PT2M":  "2_minutes",
+    "PT5M":  "5_minutes",
+    "PT10M": "10_minutes",
+    "PT15M": "15_minutes",
+    "PT30M": "half_hourly",
+    "PT1H":  "hourly",
+}
+
+
+def _normalise_frequency(freq: Optional[str]) -> tuple[str, Optional[str]]:
+    """Normalise a frequency_sampling value and validate it.
+
+    Returns (normalised_value, error_message).  error_message is None when the
+    value is valid.  Empty / None / 'oov' are all treated as "auto-detect" and
+    pass through as ''.
+    """
+    from .metrics import _freq_token_to_minutes
+
+    if not freq:
+        return "", None
+    mapped = _ISO_TO_TSFM_FREQ.get(freq, freq)
+    if mapped not in _freq_token_to_minutes:
+        valid = sorted(_ISO_TO_TSFM_FREQ.keys()) + sorted(
+            k for k in _freq_token_to_minutes if k != "oov"
+        )
+        return mapped, (
+            f"Unknown frequency_sampling '{freq}'. "
+            f"Valid values: {valid}"
+        )
+    return mapped, None
+
 
 @mcp.tool()
 def run_integrated_tsad(
-    dataset_path: str,
-    timestamp_column: str,
-    target_columns: List[str],
-    model_checkpoint: str = "ttm_96_28",
-    false_alarm: float = 0.05,
-    ad_model_type: str = "timeseries_conformal_adaptive",
-    n_calibration: float = 0.2,
-    conditional_columns: Optional[List[str]] = None,
-    id_columns: Optional[List[str]] = None,
-    frequency_sampling: str = "",
-    autoregressive_modeling: bool = True,
+    dataset_path: _DatasetPath,
+    timestamp_column: _TimestampColumn,
+    target_columns: _TargetColumns,
+    model_checkpoint: _ModelCheckpoint = None,
+    false_alarm: _FalseAlarm = 0.05,
+    ad_model_type: _AdModelType = "timeseries_conformal_adaptive",
+    n_calibration: _NCalibration = 0.2,
+    conditional_columns: _ConditionalColumns = None,
+    id_columns: _IdColumns = None,
+    frequency_sampling: _FrequencySampling = "",
+    autoregressive_modeling: _AutoregressiveModeling = True,
 ) -> Union[TSADResult, ErrorResult]:
     """Run end-to-end time-series forecasting + anomaly detection in one call.
 
@@ -539,12 +632,30 @@ def run_integrated_tsad(
         conditional_columns: Exogenous feature columns.
         id_columns: ID columns for grouped time series.
         frequency_sampling: Sampling frequency string or '' to auto-detect.
-        autoregressive_modeling: Use autoregressive mode when True.
+        autoregressive_modeling: Set True (default) for pure time-series prediction
+            using the series' own past values. Only set False if you have exogenous
+            features in conditional_columns — without them False will always error.
+            This is the recommended tool for multi-column anomaly detection: it runs
+            forecasting + anomaly detection per column automatically.
     """
+    if not model_checkpoint:
+        model_checkpoint = "ttm_96_28"
+    frequency_sampling, _freq_err = _normalise_frequency(frequency_sampling)
+    if _freq_err:
+        return ErrorResult(error=_freq_err)
     if not dataset_path.strip():
         return ErrorResult(error="dataset_path is required")
     if not target_columns:
         return ErrorResult(error="target_columns must not be empty")
+    if ad_model_type not in _VALID_AD_TYPES:
+        # silent fallback temporarily
+        ad_model_type = "timeseries_conformal_adaptive"
+        # return ErrorResult(
+        #     error=(
+        #         f"Unknown ad_model_type '{ad_model_type}'. "
+        #         f"Valid values: {sorted(_VALID_AD_TYPES)}"
+        #     )
+        # )
 
     try:
         import tsfm_public  # noqa: F401
@@ -561,6 +672,7 @@ def run_integrated_tsad(
         with open(model_checkpoint + "/config.json") as _f:
             model_config = json.load(_f)
         df_combined = pd.DataFrame()
+        col_errors: list[str] = []
 
         for col in target_columns:
             col_config = _build_dataset_config(
@@ -571,19 +683,31 @@ def run_integrated_tsad(
                 frequency_sampling,
                 autoregressive_modeling,
             )
+            # Quality filter must auto-detect frequency from the data; using a
+            # caller-supplied value (e.g. "hourly") on data with a different
+            # interval (e.g. 15-min) causes the filter to treat every step as a
+            # gap and discard all rows.
+            col_config_for_dq = _build_dataset_config(
+                timestamp_column,
+                [col],
+                conditional_columns,
+                id_columns,
+                "",
+                autoregressive_modeling,
+            )
 
             # 1. Load and quality-filter data for this column
             data_df = _read_ts_data(dataset_path, dataset_config_dictionary=col_config)
             output_dq = _tsfm_data_quality_filter(
-                data_df, col_config, model_config, task="inference"
+                data_df, col_config_for_dq, model_config, task="inference"
             )
             data_df_filtered = output_dq["data"]
             col_config_filtered = output_dq["dataset_config_dictionary"]
 
             if len(data_df_filtered) == 0:
-                logger.warning(
-                    "Data quality filter removed all data for column %s; skipping.", col
-                )
+                msg = f"{col}: data quality filter removed all rows"
+                logger.warning(msg)
+                col_errors.append(msg)
                 continue
 
             # 2. Zero-shot forecasting for this column
@@ -595,7 +719,9 @@ def run_integrated_tsad(
                     model_checkpoint,
                 )
             except Exception as exc:
-                logger.warning("Forecasting failed for column %s: %s", col, exc)
+                msg = f"{col}: forecasting failed — {exc}"
+                logger.warning(msg)
+                col_errors.append(msg)
                 continue
 
             inference_data = {
@@ -606,12 +732,29 @@ def run_integrated_tsad(
                 "target_columns": forecast_output["target_columns"],
             }
             # 3. Conformal anomaly detection for this column
+            # Write quality-filtered data (which has the segment_id column added
+            # by the quality filter) to a temp CSV.  Build a fresh config that
+            # uses segment_id as the id column to match the forecasting output.
+            tsad_tmp = os.path.join(tempfile.mkdtemp(dir=_TMP_BASE), f"tsad_input_{uuid.uuid4()}.csv")
+            data_df_filtered.to_csv(tsad_tmp, index=False)
+            filtered_conditional = (
+                col_config_filtered["column_specifiers"].get("conditional_columns")
+                or None
+            )
+            tsad_config = _build_dataset_config(
+                timestamp_column,
+                [col],
+                filtered_conditional,
+                ["segment_id"],
+                frequency_sampling,
+                autoregressive_modeling,
+            )
             tsmodel_pred = inference_data
 
             try:
                 tsad_output = _TimeSeriesAnomalyDetectionConformalWrapper().run(
-                    dataset_path,
-                    col_config,
+                    tsad_tmp,
+                    tsad_config,
                     tsmodel_pred,
                     ad_model_checkpoint=None,
                     ad_model_save=ad_model_save,
@@ -621,16 +764,20 @@ def run_integrated_tsad(
                     false_alarm=false_alarm,
                 )
             except Exception as exc:
-                logger.warning("TSAD failed for column %s: %s", col, exc)
+                msg = f"{col}: anomaly detection failed — {exc}"
+                logger.warning(msg)
+                col_errors.append(msg)
                 continue
 
             df_col = _tsad_output_to_df(tsad_output)
             df_combined = pd.concat([df_combined, df_col], axis=0, ignore_index=True)
 
         if df_combined.empty:
-            return ErrorResult(error="No TSAD results produced for any target column.")
+            detail = "; ".join(col_errors) if col_errors else "unknown reason"
+            return ErrorResult(error=f"No TSAD results produced for any target column: {detail}")
 
-        tmp_dir = tempfile.mkdtemp()
+        _TMP_BASE.mkdir(exist_ok=True)
+        tmp_dir = tempfile.mkdtemp(dir=_TMP_BASE)
         csv_path = os.path.join(tmp_dir, f"integrated_tsad_{uuid.uuid4()}.csv")
         df_combined.to_csv(csv_path, index=False)
         anomaly_count = (

@@ -143,7 +143,7 @@ def load_dataset(data_dir: str, csv_file: str, dataset: str, date_cols: dict) ->
         logger.warning("CSV not found, skipping: %s", path)
         return []
 
-    df = pd.read_csv(path, dtype=str)
+    df = pd.read_csv(path, dtype=str, index_col=False)
     for col, fmt in date_cols.items():
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], format=fmt, errors="coerce")

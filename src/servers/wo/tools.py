@@ -6,9 +6,13 @@ the raw functions or the decorated ``mcp`` without circular-import issues.
 """
 
 from collections import Counter
-from typing import List, Optional, Union
+from typing import Annotated, List, Optional, Union
 
 import pandas as pd
+from pydantic import Field
+
+_EquipmentId = Annotated[str, Field(description="Equipment name or identifier, e.g. 'Chiller 6' or 'CWC04013'. Prefer using the asset name exactly as it appears in prior step results.")]
+_DateOpt = Annotated[Optional[str], Field(description="Date in YYYY-MM-DD format, e.g. '2020-06-20'. Omit to use all available history.")]
 
 from .data import (
     date_conditions,
@@ -16,10 +20,13 @@ from .data import (
     filter_df,
     get_transition_matrix,
     load,
+    normalize_equipment_id,
     parse_date,
     row_to_event,
 )
 from .models import (
+    AlertRuleItem,
+    AlertRulesResult,
     AlertToFailureEntry,
     AlertToFailureResult,
     ErrorResult,
@@ -35,17 +42,18 @@ from .models import (
 
 
 def get_work_orders(
-    equipment_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    equipment_id: _EquipmentId,
+    start_date: _DateOpt = None,
+    end_date: _DateOpt = None,
 ) -> Union[WorkOrdersResult, ErrorResult]:
     """Retrieve all work orders for a specific equipment within an optional date range.
 
     Args:
-        equipment_id: Equipment identifier, e.g. ``"CWC04013"``.
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -66,17 +74,18 @@ def get_work_orders(
 
 
 def get_preventive_work_orders(
-    equipment_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    equipment_id: _EquipmentId,
+    start_date: _DateOpt = None,
+    end_date: _DateOpt = None,
 ) -> Union[WorkOrdersResult, ErrorResult]:
     """Retrieve only preventive work orders for a specific equipment within an optional date range.
 
     Args:
-        equipment_id: Equipment identifier, e.g. ``"CWC04013"``.
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -97,17 +106,18 @@ def get_preventive_work_orders(
 
 
 def get_corrective_work_orders(
-    equipment_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    equipment_id: _EquipmentId,
+    start_date: _DateOpt = None,
+    end_date: _DateOpt = None,
 ) -> Union[WorkOrdersResult, ErrorResult]:
     """Retrieve only corrective work orders for a specific equipment within an optional date range.
 
     Args:
-        equipment_id: Equipment identifier, e.g. ``"CWC04013"``.
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -128,17 +138,18 @@ def get_corrective_work_orders(
 
 
 def get_events(
-    equipment_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    equipment_id: _EquipmentId,
+    start_date: _DateOpt = None,
+    end_date: _DateOpt = None,
 ) -> Union[EventsResult, ErrorResult]:
     """Retrieve all events (work orders, alerts, anomalies) for a specific equipment within an optional date range.
 
     Args:
-        equipment_id: Equipment identifier, e.g. ``"CWC04013"``.
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     df = load("events")
     if df is None:
         return ErrorResult(error="Event data not available")
@@ -191,19 +202,20 @@ def get_failure_codes() -> Union[FailureCodesResult, ErrorResult]:
 
 
 def get_work_order_distribution(
-    equipment_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    equipment_id: _EquipmentId,
+    start_date: _DateOpt = None,
+    end_date: _DateOpt = None,
 ) -> Union[WorkOrderDistributionResult, ErrorResult]:
     """Calculate the distribution of work order types (by failure code) for a specific equipment.
 
     Returns counts per (primary_code, secondary_code) pair, sorted by frequency descending.
 
     Args:
-        equipment_id: Equipment identifier, e.g. ``"CWC04013"``.
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     wo_df = load("wo_events")
     fc_df = load("failure_codes")
     if wo_df is None:
@@ -264,21 +276,24 @@ def get_work_order_distribution(
 
 
 def predict_next_work_order(
-    equipment_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    equipment_id: _EquipmentId,
+    start_date: _DateOpt = None,
+    end_date: _DateOpt = None,
 ) -> Union[NextWorkOrderPredictionResult, ErrorResult]:
     """Predict the probabilities of the next expected work order types based on historical transition patterns.
 
     Uses a Markov-chain transition matrix built from the sequence of past work order
     primary codes to estimate what type of work order is likely to follow the most
-    recent one.
+    recent one. Requires at least 1 year of work order history to produce meaningful
+    probability distributions. Short windows (< 1 year) often yield a single transition
+    with probability 1.0.
 
     Args:
-        equipment_id: Equipment identifier, e.g. ``"CWC04013"``.
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     wo_df = load("wo_events")
     pfc_df = load("primary_failure_codes")
     if wo_df is None:
@@ -329,23 +344,68 @@ def predict_next_work_order(
     )
 
 
+def get_alert_rules(
+    equipment_id: _EquipmentId,
+) -> Union[AlertRulesResult, ErrorResult]:
+    """List all alert rule IDs that have fired for a specific equipment.
+
+    Call this before analyze_alert_to_failure to discover valid rule_id values.
+
+    Args:
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
+    """
+    equipment_id = normalize_equipment_id(equipment_id)
+    alert_df = load("alert_events")
+    if alert_df is None:
+        return ErrorResult(error="Alert events data not available")
+
+    cond: dict = {
+        "equipment_id": lambda x, eid=equipment_id: isinstance(x, str) and x.strip().lower() == eid.strip().lower(),
+    }
+    filtered = filter_df(alert_df, cond)
+    if filtered is None or filtered.empty:
+        return ErrorResult(error=f"No alert events found for equipment '{equipment_id}'")
+
+    rule_ids = sorted(filtered["rule_id"].dropna().unique().tolist())
+
+    rule_df = load("alert_rule")
+    rule_map: dict[str, str] = {}
+    if rule_df is not None and "rule_id" in rule_df.columns and "rule_name" in rule_df.columns:
+        rule_map = dict(zip(rule_df["rule_id"].astype(str), rule_df["rule_name"].astype(str)))
+
+    rules = [
+        AlertRuleItem(rule_id=rid, rule_name=rule_map.get(rid, ""))
+        for rid in rule_ids
+    ]
+    summary = ", ".join(f"{r.rule_id} ({r.rule_name})" if r.rule_name else r.rule_id for r in rules)
+    return AlertRulesResult(
+        equipment_id=equipment_id,
+        total=len(rules),
+        rules=rules,
+        message=f"Found {len(rules)} alert rule(s) for '{equipment_id}': {summary}.",
+    )
+
+
 def analyze_alert_to_failure(
-    equipment_id: str,
-    rule_id: str,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    equipment_id: _EquipmentId,
+    rule_id: Annotated[str, Field(description="Alert rule ID from get_alert_rules, e.g. 'RUL0012'. Must be a valid rule that has fired for this equipment — call get_alert_rules first.")],
+    start_date: _DateOpt = None,
+    end_date: _DateOpt = None,
 ) -> Union[AlertToFailureResult, ErrorResult]:
     """Analyze the relationship between a specific alert rule and subsequent maintenance events.
 
     Computes the probability that each alert occurrence leads to a work order (vs no
-    maintenance) and the average time-to-maintenance in hours.
+    maintenance) and the average time-to-maintenance in hours. Requires at least 90 days
+    of alert history to compute meaningful transitions — omit start_date/end_date to use
+    all available history.
 
     Args:
-        equipment_id: Equipment identifier, e.g. ``"CWC04013"``.
+        equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
         rule_id: Alert rule identifier, e.g. ``"CR00002"``.
         start_date: Start of date range (inclusive), format ``YYYY-MM-DD``.
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
+    equipment_id = normalize_equipment_id(equipment_id)
     alert_df = load("alert_events")
     if alert_df is None:
         return ErrorResult(error="Alert events data not available")
@@ -362,7 +422,25 @@ def analyze_alert_to_failure(
     }
     filtered = filter_df(alert_df, cond)
     if filtered is None or filtered.empty:
-        return ErrorResult(error=f"No alert events found for equipment '{equipment_id}' and rule '{rule_id}'")
+        # Try to surface valid rule_ids so the caller can retry with a correct value.
+        all_cond: dict = {
+            "equipment_id": lambda x, eid=equipment_id: isinstance(x, str) and x.strip().lower() == eid.strip().lower(),
+        }
+        all_filtered = filter_df(alert_df, all_cond)
+        if all_filtered is not None and not all_filtered.empty:
+            available_ids = sorted(all_filtered["rule_id"].dropna().unique().tolist())
+            rule_df = load("alert_rule")
+            rule_map: dict[str, str] = {}
+            if rule_df is not None and "rule_id" in rule_df.columns and "rule_name" in rule_df.columns:
+                rule_map = dict(zip(rule_df["rule_id"].astype(str), rule_df["rule_name"].astype(str)))
+            available_str = ", ".join(
+                f"{rid} ({rule_map[rid]})" if rid in rule_map else rid
+                for rid in available_ids
+            )
+            hint = f" Available rules for this equipment: [{available_str}]."
+        else:
+            hint = ""
+        return ErrorResult(error=f"No alert events found for equipment '{equipment_id}' and rule '{rule_id}'.{hint}")
 
     filtered = filtered.sort_values("start_time").reset_index(drop=True)
 
