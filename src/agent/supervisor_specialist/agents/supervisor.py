@@ -352,11 +352,10 @@ class SupervisorAgent:
             return "(none — no artifacts collected yet)"
         lines = []
         for a in artifacts:
-            payload_preview = json.dumps(a.payload, ensure_ascii=False)[:300]
-            if len(json.dumps(a.payload, ensure_ascii=False)) > 300:
-                payload_preview += "..."
+            summary = getattr(a, "summary", "") or ""
+            summary_line = summary if summary else "(no summary)"
             lines.append(
                 f"  [{a.artifact_id}] type={a.artifact_type} producer={a.producer} "
-                f"assets={a.asset_ids}\n    preview: {payload_preview}"
+                f"assets={a.asset_ids}\n    summary: {summary_line}"
             )
         return "\n".join(lines)

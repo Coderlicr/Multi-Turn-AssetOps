@@ -125,7 +125,8 @@ Use EXACTLY this schema:
       "time_window": {{"start": "...", "end": "..."}},
       "source_artifacts": [...],
       "payload": {{...}},
-      "open_questions": [...]
+      "open_questions": [...],
+      "summary": "<2-4 sentences: what you were asked to do, what tools you called, and what results you obtained — factual and neutral, no recommendations>"
     }}
   ]
 }}
@@ -252,6 +253,7 @@ class SpecialistAgent(ABC):
                 source_artifacts=draft.source_artifacts,
                 payload=draft.payload,
                 open_questions=draft.open_questions,
+                summary=draft.summary,
             )
             for draft in final.artifacts
         ]
@@ -286,6 +288,15 @@ class SpecialistAgent(ABC):
             status="completed",
             message=f"Produced {len(artifacts)} artifact(s): {[a.artifact_id for a in artifacts]}",
         )
+        for artifact in artifacts:
+            if artifact.summary:
+                self.event_stream.emit(
+                    case_id=task.case_id,
+                    agent_role=self.role,
+                    task_type=task.task_type,
+                    status="completed",
+                    message=f"[{artifact.artifact_id}] {artifact.summary}",
+                )
         return SpecialistResult(
             artifacts=artifacts,
             tool_calls=_summarize_tool_calls(results),
