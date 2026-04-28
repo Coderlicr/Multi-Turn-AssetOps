@@ -1,5 +1,5 @@
 ## Quick Start
-You need to put downloaded`main.json` in `src/couchdb/sample_data/iot` directory before running Docker Compose.
+You need to put the downloaded `main.json` in the `src/couchdb/sample_data/iot` directory before running Docker Compose.
 
 ```
 uv sync
@@ -15,11 +15,24 @@ To verify the imported sample data:
 python src/couchdb/check_couchdb_data.py
 ```
 
-Supervisor-Specialists Architecture Examples:
+Supervisor-Specialist architecture examples:
 ```
 uv run supervisor-specialist --reference-date 2020-06-20 "The temperature of our chiller at Site MAIN seems unusually high lately. Can you look into it?"
 uv run supervisor-specialist --reference-date 2020-06-20 "I want to compare the efficiency of Chiller 6 and Chiller 9 at the MAIN site over the past month."
 ```
+
+Multi-turn dialog keeps one in-memory LangGraph session and writes JSONL behavior logs:
+```
+uv run supervisor-specialist --multi-turn --reference-date 2020-06-20
+```
+
+Enable Specialist-level parallel tool batches and deterministic multi-asset coverage with `--parallel`:
+```
+uv run supervisor-specialist --parallel --reference-date 2020-06-20 "Compare Chiller 3, Chiller 4, Chiller 6, and Chiller 9 over the past month."
+uv run supervisor-specialist --parallel --multi-turn --reference-date 2020-06-20
+```
+
+Logs are written to `logs/supervisor_specialist/case_<timestamp>_<id>.jsonl`. The log schema matches single-turn and multi-turn runs; multi-turn records also include `turn_id`, and parallel tool calls include `parallel_group_id`, `parallel_index`, and `parallel_size`.
 
 Your `.env` file should be like (fill `WATSONX_APIKEY` and `WATSONX_PROJECT_ID` first):
 ```
@@ -30,14 +43,19 @@ WO_DBNAME=workorder
 COUCHDB_USERNAME=admin
 COUCHDB_PASSWORD=password
 
-# ── IBM WatsonX (plan-execute runner) ────────────────────────────────────────
+# ── IBM WatsonX (plan-execute and supervisor-specialist runners) ─────────────
 WATSONX_APIKEY=
 WATSONX_PROJECT_ID=
 WATSONX_URL=https://us-south.ml.cloud.ibm.com   # optional
 
-# ── LiteLLM (plan-execute runner) ────────────────────────────────────────────
+# ── LiteLLM (plan-execute and supervisor-specialist runners) ─────────────────
 LITELLM_API_KEY=
 LITELLM_BASE_URL=
+
+# ── Supervisor-Specialist optional controls ──────────────────────────────────
+SS_MODEL_ID=watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
+SS_MAX_STEPS=12
+SUPERVISOR_SPECIALIST_PARALLELISM=4
 ```
 
 ## Repository Layout
@@ -59,6 +77,20 @@ LITELLM_BASE_URL=
 - `runner.py` — main `PlanExecuteRunner` logic
 - `plan_execute/` — `Planner` / `Executor` / `Summariser` submodules
 - `models.py` — data models (`Plan`, `StepResult`, etc.)
+
+### Supervisor-Specialist Runner — `src/agent/supervisor_specialist/`
+
+- `cli.py` — entry point for the `supervisor-specialist` command
+- `runner.py` — LangGraph-backed runner and in-memory multi-turn session management
+- `graph.py` — graph state, turn preparation, routing, final response, and memory updates
+- `agents/` — Supervisor plus data collection, time-series analysis, failure reasoning, and maintenance planning specialists
+- `runtime/` — artifact store, MCP tool client, behavior logger, and streaming event output
+- `schemas.py` — shared state, artifact, tool-call, memory, and log models
+
+Run focused Supervisor-Specialist tests:
+```
+uv run python -m pytest src/agent/supervisor_specialist -q
+```
 
 ### LLM Backends — `src/llm/`
 

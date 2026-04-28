@@ -366,6 +366,7 @@ async def test_specialist_executes_parallel_batch_and_logs_metadata(tmp_path, mo
         artifact_store=ArtifactStore(),
         behavior_log=BehaviorLog(log_dir=tmp_path),
         event_stream=EventStream(quiet=True),
+        enable_parallel=True,
     )
     task = TaskEnvelope(
         case_id="case_parallel",
@@ -412,6 +413,35 @@ async def test_specialist_executes_parallel_batch_and_logs_metadata(tmp_path, mo
 
 
 @pytest.mark.anyio
+async def test_parallel_disabled_runs_only_one_tool_call_from_batch(tmp_path):
+    llm = BatchLLM()
+    mcp_tools = BatchMCPToolClient(delay=0.01)
+    specialist = TimeSeriesAnalysisSpecialist(
+        llm=llm,
+        mcp_tools=mcp_tools,
+        artifact_store=ArtifactStore(),
+        behavior_log=BehaviorLog(log_dir=tmp_path),
+        event_stream=EventStream(quiet=True),
+    )
+    task = TaskEnvelope(
+        case_id="case_parallel_disabled",
+        task_type="time_series_analysis",
+        goal="Analyze four chiller CSV files with TSFM.",
+        site="MAIN",
+        asset_ids=["Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"],
+        time_window=TimeWindow(start="2020-06-01T00:00:00", end="2020-07-01T00:00:00"),
+        focus_metrics=["temperature"],
+        input_artifacts=[],
+    )
+
+    result = await specialist.run(task)
+
+    assert [call[1]["dataset_path"] for call in mcp_tools.calls] == ["/tmp/chiller_3.csv"]
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].parallel_group_id is None
+
+
+@pytest.mark.anyio
 async def test_duplicate_successful_batch_members_are_skipped_not_logged_as_failures(tmp_path):
     llm = DuplicateRetryLLM()
     mcp_tools = BatchMCPToolClient(delay=0.01)
@@ -421,6 +451,7 @@ async def test_duplicate_successful_batch_members_are_skipped_not_logged_as_fail
         artifact_store=ArtifactStore(),
         behavior_log=BehaviorLog(log_dir=tmp_path),
         event_stream=EventStream(quiet=True),
+        enable_parallel=True,
     )
     task = TaskEnvelope(
         case_id="case_duplicate_retry",
@@ -464,6 +495,7 @@ async def test_data_collection_completes_history_csv_for_all_discovered_assets(t
         artifact_store=ArtifactStore(),
         behavior_log=BehaviorLog(log_dir=tmp_path),
         event_stream=EventStream(quiet=True),
+        enable_parallel=True,
     )
     task = TaskEnvelope(
         case_id="case_data_coverage",
@@ -530,6 +562,7 @@ async def test_time_series_completes_tsfm_for_all_dataset_artifact_csvs(tmp_path
         artifact_store=artifact_store,
         behavior_log=BehaviorLog(log_dir=tmp_path),
         event_stream=EventStream(quiet=True),
+        enable_parallel=True,
     )
     task = TaskEnvelope(
         case_id="case_ts_coverage",

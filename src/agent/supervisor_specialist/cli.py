@@ -2,6 +2,7 @@
 
 Usage:
   supervisor-specialist "question"
+  supervisor-specialist --parallel "question"
   supervisor-specialist --multi-turn "question"
   supervisor-specialist --model-id watsonx/... "question"
   supervisor-specialist --no-stream --no-log "question"
@@ -55,6 +56,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enter a REPL and retain supervisor-specialist memory across turns.",
     )
+    p.add_argument(
+        "--parallel",
+        action="store_true",
+        help=(
+            "Enable parallel specialist tool batches and deterministic multi-asset "
+            "coverage guards."
+        ),
+    )
     return p
 
 
@@ -78,6 +87,7 @@ async def _run(args: argparse.Namespace) -> None:
         quiet=args.no_stream,
         log_dir=log_dir,
         reference_date=args.reference_date,
+        parallel=args.parallel,
     )
 
     if not args.multi_turn:

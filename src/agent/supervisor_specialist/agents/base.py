@@ -103,30 +103,40 @@ Do not write any explanation. Output only valid JSON.
 Option A — call one tool:
 {{"tool_name": "<exact tool name from the list above>", "args": {{...}}}}
 
-Option B — call an independent batch of tools in parallel:
-{{"tool_calls": [
-  {{"tool_name": "<exact tool name from the list above>", "args": {{...}}}},
-  {{"tool_name": "<exact tool name from the list above>", "args": {{...}}}}
-]}}
+{parallel_option}
 
-Option C — you have enough data, stop:
+{done_option} — you have enough data, stop:
 {{"done": true}}
 
 Critical rules:
 - If a prior tool returned a file path (e.g. csv_path in iot.history_csv result), use THAT EXACT PATH string in subsequent calls — never invent a path
 - tool_name must exactly match one of the listed tool names
-- Use Option B when multiple tool calls are independent, especially the same analysis over multiple CSV files or assets
-- Do NOT use Option B when a later call needs a file path, column name, ID, or value returned by an earlier call
-- Keep each parallel batch to at most {max_parallel_tool_calls} tool calls unless the task explicitly requires more
+{parallel_rules}
 - Date/time args MUST be ISO 8601 strings, e.g. "2020-06-01T00:00:00" — never use expressions or function calls
 - Stop (done=true) once you have enough data to produce a meaningful artifact
 - Do NOT repeat a tool that already succeeded with the same arguments
-- If a prior parallel batch partly failed, retry ONLY the failed inputs; do not repeat successful batch members
 - If a tool has FAILED and you are about to call it again with essentially the same arguments, do NOT retry — output {{"done": true}} or try a completely different tool instead
 - When you receive a CSV file path (from any prior tool result or input artifact) and you are unsure of the column names, call utilities.csv_stats with ONLY the csv_path (omit the columns parameter) first — this returns all_columns so you know the exact column names before making further calls
-- If column names and CSV paths are already known for multiple assets, run the TSFM analysis calls in a parallel batch
 
 JSON:"""
+
+_PARALLEL_OPTION = """\
+Option B — call an independent batch of tools in parallel:
+{"tool_calls": [
+  {"tool_name": "<exact tool name from the list above>", "args": {...}},
+  {"tool_name": "<exact tool name from the list above>", "args": {...}}
+]}"""
+
+_PARALLEL_RULES = """\
+- Use Option B when multiple tool calls are independent, especially the same analysis over multiple CSV files or assets
+- Do NOT use Option B when a later call needs a file path, column name, ID, or value returned by an earlier call
+- Keep each parallel batch to at most {max_parallel_tool_calls} tool calls unless the task explicitly requires more
+- If a prior parallel batch partly failed, retry ONLY the failed inputs; do not repeat successful batch members
+- If column names and CSV paths are already known for multiple assets, run the TSFM analysis calls in a parallel batch"""
+
+_SEQUENTIAL_RULES = """\
+- Call at most one tool per response.
+- Do not use a tool_calls array."""
 
 
 # ── Artifact generation prompt (unchanged from original) ─────────────────────
@@ -277,12 +287,14 @@ class SpecialistAgent(ABC):
         artifact_store: ArtifactStore,
         behavior_log: BehaviorLog,
         event_stream: EventStream,
+        enable_parallel: bool = False,
     ) -> None:
         self.llm = llm
         self.mcp_tools = mcp_tools
         self.artifact_store = artifact_store
         self.logger = behavior_log
         self.event_stream = event_stream
+        self.enable_parallel = enable_parallel
 
     @property
     def _role_label(self) -> str:
@@ -302,7 +314,8 @@ class SpecialistAgent(ABC):
 
         # ReAct loop: interleave LLM decisions with tool execution
         results = await self._run_react_loop(task, input_artifacts, tool_schemas)
-        results = await self._postprocess_tool_results(task, input_artifacts, results)
+        if self.enable_parallel:
+            results = await self._postprocess_tool_results(task, input_artifacts, results)
 
         # Artifact generation: LLM synthesizes all tool results into artifacts
         final = await self._call_llm_for_artifacts(task, input_artifacts, results)
@@ -324,7 +337,8 @@ class SpecialistAgent(ABC):
             )
             for draft in final.artifacts
         ]
-        artifacts = self._postprocess_artifacts(task, input_artifacts, results, artifacts)
+        if self.enable_parallel:
+            artifacts = self._postprocess_artifacts(task, input_artifacts, results, artifacts)
 
         self.logger.write(
             case_id=task.case_id,
@@ -404,6 +418,13 @@ class SpecialistAgent(ABC):
                 input_artifacts_summary=format_artifacts_summary(input_artifacts),
                 tool_schemas=format_tool_schemas_for_prompt(tool_schemas),
                 prior_results=_format_react_results(results),
+                parallel_option=_PARALLEL_OPTION if self.enable_parallel else "",
+                done_option="Option C" if self.enable_parallel else "Option B",
+                parallel_rules=(
+                    _PARALLEL_RULES.format(max_parallel_tool_calls=max_parallel)
+                    if self.enable_parallel
+                    else _SEQUENTIAL_RULES
+                ),
                 max_parallel_tool_calls=max_parallel,
             )
 
@@ -433,6 +454,12 @@ class SpecialistAgent(ABC):
                 break
 
             requested_calls = self._requests_from_decision(decision)
+            if not self.enable_parallel and len(requested_calls) > 1:
+                _log.info(
+                    "%s: parallel tool_calls received while disabled; executing first call only.",
+                    self.role,
+                )
+                requested_calls = requested_calls[:1]
             if not requested_calls:
                 _log.warning(
                     "%s: ReAct step %d: response has no tool call and no done=true — stopping.",
@@ -453,7 +480,9 @@ class SpecialistAgent(ABC):
                 requested_calls = requested_calls[:remaining_capacity]
 
             parallel_group_id = (
-                f"pg_{uuid.uuid4().hex[:8]}" if len(requested_calls) > 1 else None
+                f"pg_{uuid.uuid4().hex[:8]}"
+                if self.enable_parallel and len(requested_calls) > 1
+                else None
             )
             synthetic_results: dict[int, ToolCallResult] = {}
             executable: list[tuple[int, ToolCallRequest]] = []
@@ -620,12 +649,14 @@ class SpecialistAgent(ABC):
         *,
         max_parallel: int,
     ) -> list[MCPToolResult]:
-        if len(requests) == 1:
-            request = requests[0]
-            try:
-                return [await self.mcp_tools.call(request.tool_name, request.args)]
-            except Exception as exc:  # noqa: BLE001
-                return [MCPToolResult(status="failed", error=str(exc) or repr(exc))]
+        if len(requests) == 1 or not self.enable_parallel:
+            results: list[MCPToolResult] = []
+            for request in requests:
+                try:
+                    results.append(await self.mcp_tools.call(request.tool_name, request.args))
+                except Exception as exc:  # noqa: BLE001
+                    results.append(MCPToolResult(status="failed", error=str(exc) or repr(exc)))
+            return results
 
         if hasattr(self.mcp_tools, "call_many_parallel"):
             return await self.mcp_tools.call_many_parallel(
@@ -653,6 +684,9 @@ class SpecialistAgent(ABC):
         message: str,
     ) -> list[ToolCallResult]:
         """Execute deterministic coverage calls, skipping calls that already succeeded."""
+        if not self.enable_parallel:
+            return []
+
         executable: list[ToolCallRequest] = []
         seen: set[str] = set()
         for request in requests:
