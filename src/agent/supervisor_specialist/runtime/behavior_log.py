@@ -14,6 +14,15 @@ _log = logging.getLogger(__name__)
 _DEFAULT_LOG_DIR = Path(__file__).parent.parent.parent.parent.parent / "logs" / "supervisor_specialist"
 
 
+def _dump_tool_call(tool_call: ToolCallLog) -> dict:
+    data = tool_call.model_dump()
+    if data.get("parallel_group_id") is None:
+        data.pop("parallel_group_id", None)
+        data.pop("parallel_index", None)
+        data.pop("parallel_size", None)
+    return data
+
+
 class BehaviorLog:
     def __init__(self, log_dir: Path | None = None) -> None:
         self._log_dir = log_dir or _DEFAULT_LOG_DIR
@@ -38,7 +47,7 @@ class BehaviorLog:
             "agent_role": agent_role,
             "task_type": task_type,
             "input_artifact_ids": input_artifact_ids,
-            "tool_calls": [tc.model_dump() for tc in tool_calls],
+            "tool_calls": [_dump_tool_call(tc) for tc in tool_calls],
             "output_artifact_ids": output_artifact_ids,
             "status": status,
         }
