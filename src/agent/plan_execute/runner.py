@@ -19,8 +19,7 @@ from llm import LLMBackend
 
 from .executor import Executor
 from .planner import Planner
-from ..artifacts import ArtifactRegistry
-from ..models import OrchestratorResult, PlanV2, StepResultV2, TaskStatus
+from ..models import OrchestratorResult
 from ..runner import AgentRunner
 
 _log = logging.getLogger(__name__)
@@ -71,84 +70,32 @@ class PlanExecuteRunner(AgentRunner):
     async def run(self, question: str) -> OrchestratorResult:
         """Run the full plan-execute loop for a question.
 
-        Phase 1 pipeline:
+        Steps:
           1. Discover available servers from registered MCP servers.
           2. Use the LLM to decompose the question into an execution plan.
-          3. Wrap into PlanV2 (strong-typed Pydantic models).
-          4. Execute with validation, retry, and artifact tracking.
-          5. On step failure after max retries, re-plan remaining steps once.
-          6. Summarise the step results into a final answer.
+          3. Execute each plan step by routing tool calls to MCP servers.
+          4. Summarise the step results into a final answer.
+
+        Args:
+            question: The user question to answer.
 
         Returns:
-            OrchestratorResult with the same interface as before.
+            OrchestratorResult with the final answer, the generated plan, and
+            the per-step execution history.
         """
         # 1. Discover
         _log.info("Discovering server capabilities...")
         server_descriptions = await self._executor.get_server_descriptions()
 
-        # 2. Plan (text-format, parsed via regex — unchanged)
+        # 2. Plan
         _log.info("Planning...")
         plan = self._planner.generate_plan(question, server_descriptions)
         _log.info("Plan has %d step(s).", len(plan.steps))
 
-        # 3. Wrap into V2 models
-        plan_v2 = PlanV2.from_legacy(plan, question=question)
-        registry = ArtifactRegistry()
+        # 3. Execute
+        history = await self._executor.execute_plan(plan, question)
 
-        # 4. Execute with validation and retry
-        history_v2 = await self._executor.execute_plan_v2(plan_v2, question, registry)
-
-        # 5. Check for failures — attempt one re-plan if needed
-        failed = [r for r in history_v2 if r.status == TaskStatus.FAILED]
-        if failed:
-            first_fail = failed[0]
-            completed = [r for r in history_v2 if r.status == TaskStatus.SUCCESS]
-            fail_idx = next(
-                i for i, r in enumerate(history_v2)
-                if r.step_number == first_fail.step_number
-            )
-            remaining_steps = [
-                s for s in plan_v2.steps
-                if s.step_number > first_fail.step_number
-                and s.status == TaskStatus.PENDING
-            ]
-
-            if remaining_steps or first_fail:
-                _log.info(
-                    "Step %d failed after retries. Attempting re-plan...",
-                    first_fail.step_number,
-                )
-                replan = self._planner.replan(
-                    original_question=question,
-                    server_descriptions=server_descriptions,
-                    completed=completed,
-                    failed=first_fail,
-                    remaining=remaining_steps,
-                )
-                if replan.steps:
-                    replan_v2 = PlanV2.from_legacy(replan, question=question)
-                    replan_results = await self._executor.execute_plan_v2(
-                        replan_v2, question, registry
-                    )
-                    history_v2.extend(replan_results)
-
-        # 6. Convert V2 results back to legacy StepResult for backward compat
-        from .models import StepResult
-
-        history = [
-            StepResult(
-                step_number=r.step_number,
-                task=r.task,
-                server=r.server,
-                response=r.response,
-                error=r.error,
-                tool=r.tool,
-                tool_args=r.tool_args,
-            )
-            for r in history_v2
-        ]
-
-        # 7. Summarise
+        # 4. Summarise
         _log.info("Summarising...")
         results_text = "\n\n".join(
             f"Step {r.step_number} — {r.task} (server: {r.server}):\n"

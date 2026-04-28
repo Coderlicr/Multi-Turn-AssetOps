@@ -11,7 +11,6 @@ import re
 
 from llm import LLMBackend
 from .models import Plan, PlanStep
-from ..models import PlanV2, PlanStepV2, StepResultV2
 
 _log = logging.getLogger(__name__)
 
@@ -45,45 +44,6 @@ Rules:
 - Keep tasks specific and actionable.
 
 Question: {question}
-
-Plan:
-"""
-
-_REPLAN_PROMPT = """\
-You are a planning assistant for industrial asset operations and maintenance.
-
-A previous plan partially failed. Re-plan only the remaining steps to answer
-the original question, taking into account what already succeeded and what
-went wrong.
-
-Available servers and tools:
-{servers}
-
-Already completed steps:
-{completed_steps}
-
-Failed step:
-{failed_step}
-Failure reason: {failure_reason}
-
-Remaining steps that were not attempted:
-{remaining_steps}
-
-Create a new plan for the remaining work. Use the same output format:
-
-#Task1: <task description>
-#Server1: <exact server name>
-#Tool1: <exact tool name, or "none" if no tool call is needed>
-#Dependency1: None
-#ExpectedOutput1: <what this step should produce>
-
-Rules:
-- Server and tool names must exactly match those listed above.
-- Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
-- Step numbering restarts from 1.
-- You may use different tools or servers to work around the failure.
-
-Original question: {question}
 
 Plan:
 """
@@ -167,42 +127,5 @@ class Planner:
             f"{name}:\n{desc}" for name, desc in server_descriptions.items()
         )
         prompt = _PLAN_PROMPT.format(servers=servers_text, question=question)
-        raw = self._llm.generate(prompt)
-        return parse_plan(raw)
-
-    def replan(
-        self,
-        original_question: str,
-        server_descriptions: dict[str, str],
-        completed: list[StepResultV2],
-        failed: StepResultV2,
-        remaining: list[PlanStepV2],
-    ) -> Plan:
-        """Generate a replacement plan for remaining work after a step failure.
-
-        Uses the same text-format prompt/parse pipeline as generate_plan,
-        but injects completed-step context and the failure reason so the
-        LLM can route around the problem.
-        """
-        servers_text = "\n\n".join(
-            f"{name}:\n{desc}" for name, desc in server_descriptions.items()
-        )
-
-        completed_text = "\n".join(
-            f"  Step {r.step_number} ({r.server}): {r.task} -> {r.response[:120]}"
-            for r in completed
-        )
-        remaining_text = "\n".join(
-            f"  Step {s.step_number}: {s.task}" for s in remaining
-        )
-
-        prompt = _REPLAN_PROMPT.format(
-            servers=servers_text,
-            question=original_question,
-            completed_steps=completed_text or "(none)",
-            failed_step=f"Step {failed.step_number} ({failed.server}): {failed.task}",
-            failure_reason=failed.error or "unknown",
-            remaining_steps=remaining_text or "(none)",
-        )
         raw = self._llm.generate(prompt)
         return parse_plan(raw)
