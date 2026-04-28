@@ -15,9 +15,9 @@ from typing import Any
 
 from llm import LLMBackend
 from .models import Plan, PlanStep, StepResult
-from ..models import PlanV2, StepResultV2, TaskStatus
-from ..session import SessionState
-from ..validator import validate_step
+from ..artifacts import Artifact, ArtifactRegistry, infer_type, truncate_for_llm
+from ..models import PlanStepV2, PlanV2, StepResultV2, TaskStatus
+from ..validator import ValidationResult, validate_step
 
 _log = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ class Executor:
     async def execute_step(
         self,
         step: PlanStep,
-        context: dict[int, StepResult] | SessionState,
+        context: dict[int, StepResult],
         question: str,
         tool_schema: str = "",
     ) -> StepResult:
@@ -196,19 +196,19 @@ class Executor:
                 tool_args=step.tool_args,
             )
 
-    # ── Phase 1: execute with validation, retry, and shared session state ────
+    # ── Phase 1: execute with validation, retry, and artifact tracking ───────
 
     async def execute_plan_v2(
         self,
         plan_v2: PlanV2,
         question: str,
-        session: SessionState,
+        registry: ArtifactRegistry,
     ) -> list[StepResultV2]:
-        """Execute plan with step validation, retry, and shared session state.
+        """Execute plan with step validation, retry, and artifact tracking.
 
         Falls back to the same MCP tool calling as execute_plan, but wraps
         each step with:
-          - Shared session updates on final step completion
+          - Artifact registration on success
           - Rule-based validation
           - Retry on failure (up to step.max_retries)
 
@@ -252,6 +252,7 @@ class Executor:
         ordered_legacy = legacy_plan.resolved_order()
         step_map = {s.step_number: s for s in plan_v2.steps}
 
+        context: dict[int, StepResult] = {}
         results: list[StepResultV2] = []
 
         for legacy_step in ordered_legacy:
@@ -265,7 +266,7 @@ class Executor:
             while attempt <= v2_step.max_retries:
                 attempt += 1
                 legacy_result = await self.execute_step(
-                    legacy_step, session, question, tool_schema=schema
+                    legacy_step, context, question, tool_schema=schema
                 )
 
                 # Wrap into V2
@@ -277,15 +278,35 @@ class Executor:
                     error=legacy_result.error,
                     tool=legacy_result.tool,
                     tool_args=legacy_result.tool_args,
+                    status=TaskStatus.SUCCESS if legacy_result.success else TaskStatus.FAILED,
                     attempts=attempt,
                 )
 
+                # Build artifact (even for failures, for lineage tracking)
+                dep_artifact_ids = []
+                for dep_num in v2_step.dependencies:
+                    dep_art = registry.get_by_step(dep_num)
+                    if dep_art:
+                        dep_artifact_ids.append(dep_art.id)
+
+                artifact = Artifact(
+                    artifact_type=infer_type(v2_step.tool),
+                    created_by_step=v2_step.step_number,
+                    created_by_server=v2_step.server,
+                    summary=truncate_for_llm(legacy_result.response, max_chars=200),
+                    raw_data=legacy_result.response,
+                    depends_on=dep_artifact_ids,
+                )
+
                 # Validate
-                validation = validate_step(v2_step, result_v2)
+                validation = validate_step(v2_step, result_v2, artifact)
 
                 if validation.passed:
+                    registry.register(artifact)
+                    result_v2.artifact_id = artifact.id
+                    result_v2.status = TaskStatus.SUCCESS
                     v2_step.status = TaskStatus.SUCCESS
-                    session.record_step(v2_step, result_v2)
+                    context[v2_step.step_number] = legacy_result
                     _log.info("Step %d OK (attempt %d).", v2_step.step_number, attempt)
                     break
 
@@ -301,8 +322,13 @@ class Executor:
                 if validation.action == "replan" or attempt > v2_step.max_retries:
                     # Max retries exhausted or replan requested
                     result_v2.error = last_error
+                    result_v2.status = TaskStatus.FAILED
                     v2_step.status = TaskStatus.FAILED
-                    session.record_step(v2_step, result_v2)
+                    # Still register artifact for lineage (failed)
+                    registry.register(artifact)
+                    result_v2.artifact_id = artifact.id
+                    # Add to context so downstream steps see the failure
+                    context[v2_step.step_number] = legacy_result
                     break
 
                 # retry: continue loop
@@ -320,16 +346,13 @@ async def _resolve_args_with_llm(
     task: str,
     tool: str,
     tool_schema: str,
-    context: dict[int, StepResult] | SessionState,
+    context: dict[int, StepResult],
     llm: LLMBackend,
 ) -> dict:
     """Generate tool arguments from the task description and prior step results."""
-    if isinstance(context, SessionState):
-        context_text = context.render_context()
-    else:
-        context_text = "\n".join(
-            f"Step {n}: {r.response}" for n, r in sorted(context.items())
-        )
+    context_text = "\n".join(
+        f"Step {n}: {r.response}" for n, r in sorted(context.items())
+    )
     prompt = (
         _ARG_RESOLUTION_PROMPT
         .replace("{question}", question)

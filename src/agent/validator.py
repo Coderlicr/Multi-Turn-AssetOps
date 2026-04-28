@@ -9,6 +9,7 @@ import json
 
 from pydantic import BaseModel
 
+from .artifacts import Artifact
 from .models import PlanStepV2, StepResultV2
 
 
@@ -31,6 +32,7 @@ def _looks_like_json(text: str) -> bool:
 def validate_step(
     step: PlanStepV2,
     result: StepResultV2,
+    artifact: Artifact,
 ) -> ValidationResult:
     """Rule-based post-execution validation -- no LLM needed.
 

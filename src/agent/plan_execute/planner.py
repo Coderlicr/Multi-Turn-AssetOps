@@ -41,7 +41,6 @@ Output format — one block per step, exactly:
 
 Rules:
 - Server and tool names must exactly match those listed above.
-- Server must always be a real server name from the list above; never use "none" or "null" for a server.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
 - Keep tasks specific and actionable.
 
@@ -80,7 +79,6 @@ Create a new plan for the remaining work. Use the same output format:
 
 Rules:
 - Server and tool names must exactly match those listed above.
-- Server must always be a real server name from the list above; never use "none" or "null" for a server.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
 - Step numbering restarts from 1.
 - You may use different tools or servers to work around the failure.

@@ -97,6 +97,7 @@ class TestStepResultV2:
         legacy = StepResult(step_number=1, task="t", server="s", response="ok")
         v2 = StepResultV2.from_legacy(legacy)
         assert v2.success is True
+        assert v2.status == TaskStatus.SUCCESS
         assert v2.attempts == 1
 
     def test_from_legacy_failure(self):
@@ -105,6 +106,7 @@ class TestStepResultV2:
         )
         v2 = StepResultV2.from_legacy(legacy)
         assert v2.success is False
+        assert v2.status == TaskStatus.FAILED
 
     def test_success_property(self):
         r = StepResultV2(step_number=1, task="t", server="s", response="ok")

@@ -18,11 +18,10 @@ from pathlib import Path
 from llm import LLMBackend
 
 from .executor import Executor
-from .models import Plan
 from .planner import Planner
-from ..models import OrchestratorResult, PlanV2, TaskStatus
+from ..artifacts import ArtifactRegistry
+from ..models import OrchestratorResult, PlanV2, StepResultV2, TaskStatus
 from ..runner import AgentRunner
-from ..session import SessionState
 
 _log = logging.getLogger(__name__)
 
@@ -38,21 +37,6 @@ Step-by-step execution results:
 Provide a concise, direct answer to the original question based on the results
 above. Do not repeat the individual steps — just give the final answer.
 """
-
-
-def _renumber_plan(plan: Plan, start_from: int) -> Plan:
-    """Rewrite a plan's step numbers so they are globally unique within a run."""
-    number_map: dict[int, int] = {}
-    next_number = start_from
-    for step in plan.steps:
-        number_map[step.step_number] = next_number
-        next_number += 1
-
-    for step in plan.steps:
-        step.step_number = number_map[step.step_number]
-        step.dependencies = [number_map[dep] for dep in step.dependencies]
-
-    return plan
 
 
 class PlanExecuteRunner(AgentRunner):
@@ -91,7 +75,7 @@ class PlanExecuteRunner(AgentRunner):
           1. Discover available servers from registered MCP servers.
           2. Use the LLM to decompose the question into an execution plan.
           3. Wrap into PlanV2 (strong-typed Pydantic models).
-          4. Execute with validation, retry, and shared session state.
+          4. Execute with validation, retry, and artifact tracking.
           5. On step failure after max retries, re-plan remaining steps once.
           6. Summarise the step results into a final answer.
 
@@ -109,16 +93,20 @@ class PlanExecuteRunner(AgentRunner):
 
         # 3. Wrap into V2 models
         plan_v2 = PlanV2.from_legacy(plan, question=question)
-        session = SessionState(question=question)
+        registry = ArtifactRegistry()
 
-        # 4. Execute with validation, retry, and shared session state
-        history_v2 = await self._executor.execute_plan_v2(plan_v2, question, session)
+        # 4. Execute with validation and retry
+        history_v2 = await self._executor.execute_plan_v2(plan_v2, question, registry)
 
         # 5. Check for failures — attempt one re-plan if needed
-        failed = [r for r in history_v2 if not r.success]
+        failed = [r for r in history_v2 if r.status == TaskStatus.FAILED]
         if failed:
             first_fail = failed[0]
-            completed = [r for r in history_v2 if r.success]
+            completed = [r for r in history_v2 if r.status == TaskStatus.SUCCESS]
+            fail_idx = next(
+                i for i, r in enumerate(history_v2)
+                if r.step_number == first_fail.step_number
+            )
             remaining_steps = [
                 s for s in plan_v2.steps
                 if s.step_number > first_fail.step_number
@@ -138,11 +126,9 @@ class PlanExecuteRunner(AgentRunner):
                     remaining=remaining_steps,
                 )
                 if replan.steps:
-                    next_step_number = max((r.step_number for r in history_v2), default=0) + 1
-                    replan = _renumber_plan(replan, start_from=next_step_number)
                     replan_v2 = PlanV2.from_legacy(replan, question=question)
                     replan_results = await self._executor.execute_plan_v2(
-                        replan_v2, question, session
+                        replan_v2, question, registry
                     )
                     history_v2.extend(replan_results)
 

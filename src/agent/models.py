@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -101,6 +101,8 @@ class StepResultV2(BaseModel):
     error: Optional[str] = None
     tool: str = ""
     tool_args: dict = Field(default_factory=dict)
+    artifact_id: Optional[str] = None
+    status: TaskStatus = TaskStatus.PENDING
     attempts: int = 0
 
     @property
@@ -118,6 +120,7 @@ class StepResultV2(BaseModel):
             error=result.error,
             tool=result.tool,
             tool_args=result.tool_args,
+            status=TaskStatus.SUCCESS if result.success else TaskStatus.FAILED,
             attempts=1,
         )
 

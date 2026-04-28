@@ -10,7 +10,7 @@ from .models import (
     TaskStatus,
 )
 from .plan_execute.models import Plan, PlanStep, StepResult
-from .session import SessionState, SessionStepData
+from .artifacts import Artifact, ArtifactRegistry
 from .validator import ValidationResult, validate_step
 
 __all__ = [
@@ -25,8 +25,8 @@ __all__ = [
     "PlanV2",
     "StepResultV2",
     "TaskStatus",
-    "SessionState",
-    "SessionStepData",
+    "Artifact",
+    "ArtifactRegistry",
     "ValidationResult",
     "validate_step",
 ]
