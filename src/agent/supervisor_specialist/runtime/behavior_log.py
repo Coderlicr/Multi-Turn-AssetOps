@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agent.supervisor_specialist.schemas import ToolCallLog
+from agent.supervisor_specialist.schemas import ArtifactEnvelope, TaskEnvelope, ToolCallLog
 
 _log = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ class BehaviorLog:
         output_artifact_ids: list[str],
         status: str,
         turn_id: str | None = None,
+        task: TaskEnvelope | None = None,
+        output_artifacts: list[ArtifactEnvelope] | None = None,
+        user_message: str | None = None,
         final_response: str | None = None,
     ) -> None:
         record = {
@@ -44,6 +47,12 @@ class BehaviorLog:
         }
         if turn_id is not None:
             record["turn_id"] = turn_id
+        if task is not None:
+            record["task"] = task.model_dump()
+        if output_artifacts is not None:
+            record["output_artifacts"] = [a.model_dump() for a in output_artifacts]
+        if user_message is not None:
+            record["user_message"] = user_message
         if final_response is not None:
             record["final_response"] = final_response
         log_path = self._log_dir / f"{case_id}.jsonl"

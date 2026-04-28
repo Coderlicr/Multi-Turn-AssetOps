@@ -273,8 +273,10 @@ class SpecialistAgent(ABC):
                 for r in results
             ],
             output_artifact_ids=[a.artifact_id for a in artifacts],
+            output_artifacts=artifacts,
             status="ok",
             turn_id=task.constraints.get("turn_id"),
+            task=task,
         )
 
         self.event_stream.emit(
