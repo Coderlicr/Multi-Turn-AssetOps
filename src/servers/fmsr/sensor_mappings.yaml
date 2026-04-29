@@ -1,0 +1,770 @@
+chiller:
+  'Compressor Overheating: Failed due to Normal wear, overheating':
+    Chiller % Loaded:
+      answer: 'Yes'
+      reason: 'The sensor Chiller % Loaded can help monitor or detect the failure
+        Compressor Overheating: Failed due to Normal wear for Chiller 1, as a decrease
+        in the chiller''s loading percentage may indicate a reduction in the chiller''s
+        ability to cool effectively, which could be related to compressor overheating.'
+      temporal_behavior: When the failure Compressor Overheating occurs, the sensor
+        Chiller % Loaded may exhibit a decreasing trend over time, as the chiller's
+        ability to cool is impaired, potentially showing a gradual decline in the
+        loading percentage before the failure is detected or the chiller shuts down.
+    Chiller Efficiency:
+      answer: 'Yes'
+      reason: 'The sensor Chiller Efficiency can help monitor or detect the failure
+        Compressor Overheating: Failed due to Normal wear for Chiller 1 because a
+        decrease in chiller efficiency is often a symptom of compressor overheating,
+        which can be caused by normal wear.'
+      temporal_behavior: When the failure occurs, the Chiller Efficiency sensor will
+        likely show a gradual decrease in efficiency over time, potentially with increased
+        fluctuations, as the compressor's performance degrades due to overheating.
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: 'The sensor Condenser Water Flow can help monitor or detect the failure
+        Compressor Overheating: Failed due to Normal wear for Chiller 1 because a
+        decrease in condenser water flow can lead to increased compressor discharge
+        pressure and temperature, causing overheating, so monitoring this flow can
+        provide early indication of potential overheating issues.'
+      temporal_behavior: When the failure Compressor Overheating occurs, the sensor
+        Condenser Water Flow may exhibit a decreasing trend, potentially dropping
+        below its normal operating range, as reduced water flow can contribute to
+        the overheating condition.
+    Condenser Water Return To Tower Temperature:
+      answer: 'Yes'
+      reason: 'The sensor Condenser Water Return To Tower Temperature can help monitor
+        or detect the failure Compressor Overheating: Failed due to Normal wear for
+        Chiller 1 because an increase in condenser water temperature can indicate
+        compressor overheating, as the compressor''s ability to transfer heat is impaired.'
+      temporal_behavior: When the failure occurs, the Condenser Water Return To Tower
+        Temperature sensor will likely show an increasing temperature reading over
+        time, as the compressor's overheating reduces its ability to efficiently transfer
+        heat to the condenser water, causing the water temperature to rise.
+    Condenser Water Supply To Chiller Temperature:
+      answer: 'Yes'
+      reason: 'The sensor Condenser Water Supply To Chiller Temperature can help monitor
+        or detect the failure Compressor Overheating: Failed due to Normal wear for
+        Chiller 1 because it measures the temperature of the condenser water supply,
+        which is related to the chiller''s cooling performance and can indicate overheating
+        issues.'
+      temporal_behavior: When the failure Compressor Overheating occurs, the sensor
+        Condenser Water Supply To Chiller Temperature is likely to show an increasing
+        trend, potentially exceeding its normal operating range, as the chiller's
+        ability to cool is impaired, causing the condenser water temperature to rise.
+    Liquid Refrigerant Evaporator Temperature:
+      answer: 'Yes'
+      reason: 'The sensor Liquid Refrigerant Evaporator Temperature can help monitor
+        or detect the failure Compressor Overheating: Failed due to Normal wear for
+        Chiller 1 because an increase in the evaporator temperature can indicate that
+        the compressor is not functioning properly, which could be due to overheating.'
+      temporal_behavior: When the failure occurs, the Liquid Refrigerant Evaporator
+        Temperature sensor will likely show an increasing temperature reading over
+        time as the compressor's ability to cool the refrigerant decreases, potentially
+        exceeding the normal operating range.
+    Power Input:
+      answer: 'Yes'
+      reason: 'The sensor Power Input can help monitor or detect the failure Compressor
+        Overheating: Failed due to Normal wear for Chiller 1, as an increase in power
+        input can indicate overheating of the compressor.'
+      temporal_behavior: When the failure occurs, the temporal behavior of the sensor
+        Power Input is expected to show an increasing trend, potentially exceeding
+        the normal operating range, as the compressor works harder and consumes more
+        power in an attempt to cool, leading to increased energy consumption and heat
+        generation.
+    Return Temperature:
+      answer: 'Yes'
+      reason: 'The sensor Return Temperature can help monitor or detect the failure
+        Compressor Overheating: Failed due to Normal wear for Chiller 1 because an
+        increase in return temperature can indicate overheating of the compressor.'
+      temporal_behavior: When the failure occurs, the Return Temperature sensor will
+        show an increasing trend, exceeding its normal operating range, indicating
+        that the compressor is overheating.
+    Setpoint Temperature:
+      answer: 'Yes'
+      reason: The sensor Setpoint Temperature can help monitor or detect the failure
+        Compressor Overheating for Chiller 1 because it can track any deviations from
+        the normal temperature setpoint, which may indicate overheating due to normal
+        wear.
+      temporal_behavior: When the failure Compressor Overheating occurs, the sensor
+        Setpoint Temperature will likely show a temperature reading that exceeds the
+        normal setpoint, indicating that the chiller is operating above its intended
+        temperature range, and this deviation can be detected as the failure occurs.
+    Supply Temperature:
+      answer: 'Yes'
+      reason: 'The sensor Supply Temperature can help monitor or detect the failure
+        Compressor Overheating: Failed due to Normal wear for Chiller 1 because an
+        increase in supply temperature is often a symptom of compressor overheating,
+        as the compressor''s ability to efficiently cool the fluid is impaired.'
+      temporal_behavior: When the failure occurs, the Supply Temperature sensor will
+        likely show an increasing trend over time, potentially exceeding its normal
+        operating range, indicating that the chiller is not effectively cooling the
+        fluid, which is a consequence of the compressor overheating.
+    Tonnage:
+      answer: 'No'
+      reason: The sensor Tonnage is not directly related to monitoring or detecting
+        compressor overheating, as it measures the cooling capacity of the chiller,
+        not temperature or overheating conditions.
+      temporal_behavior: Unknown
+  Condenser Improper water side flow rate:
+    Chiller % Loaded:
+      answer: 'Yes'
+      reason: The sensor Chiller % Loaded can help monitor or detect the failure Condenser
+        Improper water side flow rate because an improper water flow rate can affect
+        the chiller's ability to cool, which in turn can cause the chiller to operate
+        at a lower load or with reduced efficiency.
+      temporal_behavior: When the failure occurs, the sensor Chiller % Loaded may
+        exhibit a decrease in its value over time as the chiller struggles to maintain
+        its cooling capacity due to the improper water flow rate, potentially showing
+        a gradual decline or oscillations in the loaded percentage.
+    Chiller Efficiency:
+      answer: 'Yes'
+      reason: The sensor Chiller Efficiency can help monitor or detect the failure
+        Condenser Improper water side flow rate because an improper water flow rate
+        can lead to reduced heat transfer efficiency, which in turn affects the overall
+        efficiency of the chiller.
+      temporal_behavior: When the failure occurs, the sensor Chiller Efficiency will
+        likely show a decrease in efficiency over time, indicating that the chiller
+        is not operating optimally, with the efficiency value dropping below its normal
+        range as the improper water flow rate persists.
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Flow can help monitor or detect the failure
+        Condenser Improper water side flow rate for Chiller 1 because it directly
+        measures the flow rate of water in the condenser, which is the parameter affected
+        by the failure.
+      temporal_behavior: When the failure occurs, the sensor Condenser Water Flow
+        will show a reading that is outside the normal range, either lower or higher
+        than the expected flow rate, indicating an improper water side flow rate,
+        and this abnormal reading will be sustained for as long as the failure persists.
+    Condenser Water Return To Tower Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Return To Tower Temperature can help monitor
+        or detect the failure Condenser Improper water side flow rate because an improper
+        water flow rate can cause a change in the temperature of the water returning
+        to the tower, which can be measured by this sensor.
+      temporal_behavior: When the failure occurs, the temperature measured by the
+        Condenser Water Return To Tower Temperature sensor may increase or fluctuate
+        abnormally, indicating a potential issue with the condenser water flow rate.
+    Condenser Water Supply To Chiller Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Supply To Chiller Temperature can help monitor
+        or detect the failure Condenser Improper water side flow rate because an improper
+        water flow rate can cause temperature changes in the condenser water supply,
+        which can be detected by the temperature sensor.
+      temporal_behavior: When the failure occurs, the temperature of the condenser
+        water supply to the chiller may increase or fluctuate abnormally, indicating
+        a potential issue with the water flow rate, such as a higher temperature than
+        normal due to reduced flow or an unstable temperature due to fluctuating flow.
+    Liquid Refrigerant Evaporator Temperature:
+      answer: 'Yes'
+      reason: The sensor Liquid Refrigerant Evaporator Temperature can help monitor
+        or detect the failure Condenser Improper water side flow rate because an improper
+        water flow rate can affect the condenser's ability to reject heat, which in
+        turn can impact the evaporator's performance and temperature.
+      temporal_behavior: When the failure occurs, the Liquid Refrigerant Evaporator
+        Temperature may increase as the chiller's cooling capacity decreases due to
+        the reduced heat rejection in the condenser, leading to a higher temperature
+        of the liquid refrigerant entering the evaporator.
+    Power Input:
+      answer: 'Yes'
+      reason: The sensor Power Input can help monitor or detect the failure Condenser
+        Improper water side flow rate for Chiller 1 because an improper water flow
+        rate can cause the chiller to work harder, leading to an increase in power
+        consumption, which can be detected by the Power Input sensor.
+      temporal_behavior: When the failure occurs, the Power Input sensor will likely
+        show an increase in power consumption over time as the chiller struggles to
+        maintain its cooling capacity due to the improper water flow rate, potentially
+        exhibiting a gradual or stepped increase in power input values.
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Return Temperature can help monitor or detect the failure
+        Condenser Improper water side flow rate because an improper water flow rate
+        can lead to inefficient heat transfer, causing the return temperature to rise
+        or become unstable.
+      temporal_behavior: When the failure occurs, the Return Temperature sensor will
+        likely show an increasing temperature reading over time, potentially exceeding
+        the normal operating range, indicating that the chiller is not effectively
+        cooling the water due to the improper condenser water flow rate.
+    Setpoint Temperature:
+      answer: 'Yes'
+      reason: The reason is that Condenser Improper water side flow rate can cause
+        the chiller to not cool properly, which can be detected by the Setpoint Temperature
+        sensor as it will show that the temperature is not being maintained at the
+        setpoint.
+      temporal_behavior: When the failure occurs, the Setpoint Temperature sensor
+        will show a deviation from the setpoint temperature, specifically, it will
+        rise above the setpoint as the chiller is not able to cool effectively, indicating
+        a potential issue with the condenser water flow rate.
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Supply Temperature can help monitor or detect the failure
+        Condenser Improper water side flow rate for Chiller 1 because an improper
+        water flow rate can lead to inefficient heat transfer, causing the supply
+        temperature to deviate from its normal range.
+      temporal_behavior: When the failure occurs, the Supply Temperature sensor will
+        likely show an increase in temperature over time, as the chiller's ability
+        to cool the water is impaired, resulting in a temperature rise that can be
+        detected by monitoring the sensor's readings.
+    Tonnage:
+      answer: 'Yes'
+      reason: The sensor Tonnage can help monitor or detect the failure Condenser
+        Improper water side flow rate because it measures the cooling capacity of
+        the chiller, which would be affected by improper water flow rates in the condenser.
+      temporal_behavior: When the failure occurs, the sensor Tonnage would likely
+        show a decrease in the measured tonnage, indicating a reduction in the chiller's
+        cooling capacity due to the improper water flow rate.
+  Condenser Water side fouling:
+    Chiller % Loaded:
+      answer: 'Yes'
+      reason: The sensor Chiller % Loaded can help monitor or detect the failure of
+        Condenser Water side fouling for Chiller 1 because when fouling occurs, the
+        chiller's efficiency decreases, leading to a decrease in its loading capacity.
+      temporal_behavior: When the failure occurs, the sensor Chiller % Loaded will
+        show a decreasing trend over time, indicating that the chiller is not operating
+        at its full capacity due to the increased pressure drop and reduced heat transfer
+        caused by the fouling.
+    Chiller Efficiency:
+      answer: 'Yes'
+      reason: The sensor Chiller Efficiency can help monitor or detect the failure
+        Condenser Water side fouling because a decrease in chiller efficiency is a
+        common indicator of fouling on the condenser water side, which increases the
+        pressure drop and reduces heat transfer.
+      temporal_behavior: When the failure occurs, the Chiller Efficiency sensor will
+        exhibit a gradual decrease in efficiency over time as the fouling worsens,
+        potentially triggering an alarm or notification when the efficiency drops
+        below a predetermined threshold.
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Flow can help monitor or detect the failure
+        Condenser Water side fouling because fouling on the condenser water side can
+        reduce the flow rate of condenser water, which can be detected by the sensor.
+      temporal_behavior: When the failure occurs, the Condenser Water Flow sensor
+        will likely show a decrease in flow rate over time, potentially with increased
+        fluctuations or oscillations as the fouling worsens and the chiller's performance
+        degrades.
+    Condenser Water Return To Tower Temperature:
+      answer: 'Yes'
+      reason: This is because Condenser Water side fouling would increase the resistance
+        to heat transfer, leading to a higher temperature difference between the condenser
+        water supply and return, which can be reflected in the Condenser Water Return
+        To Tower Temperature sensor reading.
+      temporal_behavior: When the failure occurs, the Condenser Water Return To Tower
+        Temperature sensor reading would likely increase over time as the fouling
+        worsens, indicating a decrease in the chiller's heat transfer efficiency.
+    Condenser Water Supply To Chiller Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Supply To Chiller Temperature can help monitor
+        or detect the failure of Condenser Water side fouling for Chiller 1 because
+        fouling on the condenser water side would increase the temperature difference
+        between the condenser water supply and return, which would be reflected in
+        the temperature reading of the supply water.
+      temporal_behavior: When the failure occurs, the temperature of the Condenser
+        Water Supply To Chiller would likely increase over time as the fouling reduces
+        the heat transfer efficiency, causing the chiller to work harder and resulting
+        in a higher supply water temperature.
+    Liquid Refrigerant Evaporator Temperature:
+      answer: 'Yes'
+      reason: The sensor Liquid Refrigerant Evaporator Temperature can help monitor
+        or detect the failure of Condenser Water side fouling for Chiller 1 because
+        fouling on the condenser side can lead to increased pressure and temperature
+        on the condenser side, which in turn can cause the evaporator temperature
+        to rise due to the decreased cooling capacity of the chiller.
+      temporal_behavior: When the failure occurs, the Liquid Refrigerant Evaporator
+        Temperature sensor will likely show an increasing temperature reading over
+        time as the fouling worsens and the chiller's cooling capacity decreases.
+    Power Input:
+      answer: 'Yes'
+      reason: The sensor Power Input can help monitor or detect the failure Condenser
+        Water side fouling because when fouling occurs, the chiller's efficiency decreases,
+        leading to an increase in power consumption to maintain the same cooling capacity.
+      temporal_behavior: When the failure occurs, the Power Input sensor will show
+        an increasing trend over time as the chiller works harder to compensate for
+        the reduced heat transfer efficiency due to fouling.
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Return Temperature can help monitor or detect the failure
+        of Condenser Water side fouling for Chiller 1 because fouling on the condenser
+        water side can lead to increased pressure drops and reduced heat transfer,
+        causing the chiller to work harder and potentially increasing the return temperature.
+      temporal_behavior: When the failure occurs, the Return Temperature sensor will
+        likely show an increasing trend over time as the fouling worsens and the chiller's
+        ability to cool is impaired, potentially exceeding its normal operating range.
+    Setpoint Temperature:
+      answer: 'Yes'
+      reason: The sensor Setpoint Temperature can help monitor or detect the failure
+        Condenser Water side fouling for Chiller 1 because when fouling occurs, the
+        chiller's efficiency decreases, and it may not be able to cool as effectively,
+        potentially causing the setpoint temperature to be adjusted or deviate from
+        its normal range.
+      temporal_behavior: When the failure occurs, the Setpoint Temperature may remain
+        constant, but the actual temperature may deviate from the setpoint, or the
+        setpoint temperature may be adjusted higher or lower than normal in an attempt
+        to compensate for the decreased chiller performance.
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Supply Temperature can help monitor or detect the failure
+        of Condenser Water side fouling for Chiller 1 because fouling on the condenser
+        side can lead to increased pressure and temperature differences, affecting
+        the chiller's ability to cool, which in turn can cause the supply temperature
+        to rise or become less stable.
+      temporal_behavior: When the failure occurs, the Supply Temperature sensor may
+        exhibit a gradual or sudden increase in temperature, potentially exceeding
+        the setpoint or normal operating range, indicating a decrease in the chiller's
+        cooling performance due to the fouling.
+    Tonnage:
+      answer: 'Yes'
+      reason: The sensor Tonnage can help monitor or detect the failure Condenser
+        Water side fouling because a decrease in tonnage is often an indicator of
+        reduced chiller performance, which can be caused by fouling on the condenser
+        water side.
+      temporal_behavior: When the failure occurs, the sensor Tonnage will exhibit
+        a decreasing trend over time, indicating a reduction in the chiller's cooling
+        capacity as the fouling increases, resulting in a lower tonnage reading.
+  Evaporator Water side fouling:
+    Chiller % Loaded:
+      answer: 'Yes'
+      reason: The sensor Chiller % Loaded can help monitor or detect the failure Evaporator
+        Water side fouling for Chiller 1 because fouling on the evaporator water side
+        can reduce the chiller's heat transfer efficiency, leading to a decrease in
+        its loading capacity.
+      temporal_behavior: When the failure occurs, the sensor Chiller % Loaded will
+        likely show a decreasing trend over time as the fouling worsens, indicating
+        that the chiller is not operating at its full capacity.
+    Chiller Efficiency:
+      answer: 'Yes'
+      reason: The sensor Chiller Efficiency can help monitor or detect the failure
+        Evaporator Water side fouling because a decrease in chiller efficiency is
+        a common indicator of fouling, which increases the pressure drop and reduces
+        heat transfer.
+      temporal_behavior: When the failure Evaporator Water side fouling occurs, the
+        sensor Chiller Efficiency will show a gradual decrease over time as the fouling
+        worsens, indicating a reduction in the chiller's ability to efficiently transfer
+        heat.
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Flow can help monitor or detect the failure
+        Evaporator Water side fouling for Chiller 1 because a decrease in evaporator
+        water flow due to fouling can lead to a decrease in the condenser water flow
+        as the chiller's overall cooling capacity is reduced.
+      temporal_behavior: When the failure Evaporator Water side fouling occurs, the
+        sensor Condenser Water Flow may exhibit a gradual decrease over time as the
+        fouling worsens, potentially with increased fluctuations or variability in
+        flow rates as the chiller struggles to maintain its cooling output.
+    Condenser Water Return To Tower Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Return To Tower Temperature can help monitor
+        or detect the failure Evaporator Water side fouling for Chiller 1 because
+        fouling on the evaporator water side increases the thermal resistance, reducing
+        the heat transfer and causing the chiller to work harder, which in turn can
+        increase the condenser water temperature.
+      temporal_behavior: When the failure occurs, the Condenser Water Return To Tower
+        Temperature will likely increase over time as the chiller's efficiency decreases
+        and it works harder to cool, resulting in a higher temperature of the condenser
+        water returning to the tower.
+    Condenser Water Supply To Chiller Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Supply To Chiller Temperature can help monitor
+        or detect the failure Evaporator Water side fouling for Chiller 1 because
+        fouling on the evaporator water side can lead to increased pressure drops
+        and reduced heat transfer, which in turn can cause the chiller to work harder
+        and potentially increase the temperature of the condenser water supply.
+      temporal_behavior: When the failure occurs, the temperature of the Condenser
+        Water Supply To Chiller may increase over time as the chiller's efficiency
+        decreases and it struggles to cool the water, potentially leading to a gradual
+        rise in the condenser water supply temperature.
+    Liquid Refrigerant Evaporator Temperature:
+      answer: 'Yes'
+      reason: The sensor Liquid Refrigerant Evaporator Temperature can help monitor
+        or detect the failure Evaporator Water side fouling because fouling on the
+        water side of the evaporator will increase the thermal resistance, leading
+        to a decrease in the heat transfer rate, which in turn will cause the evaporator
+        temperature to rise.
+      temporal_behavior: When the failure occurs, the Liquid Refrigerant Evaporator
+        Temperature will increase over time as the fouling builds up and reduces the
+        heat transfer efficiency, allowing for detection of the failure through monitoring
+        of this temperature sensor.
+    Power Input:
+      answer: 'Yes'
+      reason: The sensor Power Input can help monitor or detect the failure Evaporator
+        Water side fouling for Chiller 1 because fouling on the evaporator water side
+        increases the pressure drop and reduces the heat transfer coefficient, leading
+        to increased power consumption to maintain the same cooling capacity.
+      temporal_behavior: When the failure Evaporator Water side fouling occurs, the
+        temporal behavior of the sensor Power Input is an increasing trend over time,
+        as the chiller's power consumption rises to compensate for the reduced heat
+        transfer efficiency.
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Return Temperature can help monitor or detect the failure
+        Evaporator Water side fouling for Chiller 1 because fouling on the evaporator
+        water side would increase the thermal resistance, leading to a decrease in
+        heat transfer, which in turn would cause the return temperature to increase.
+      temporal_behavior: When the failure occurs, the Return Temperature sensor reading
+        will increase over time as the fouling builds up and reduces the heat transfer
+        efficiency of the evaporator.
+    Setpoint Temperature:
+      answer: 'Yes'
+      reason: The sensor Setpoint Temperature can help monitor or detect the failure
+        Evaporator Water side fouling for Chiller 1 because when fouling occurs, the
+        chiller's heat transfer efficiency decreases, which may cause the chiller
+        to operate at a higher temperature than setpoint to achieve the desired cooling,
+        and thus the setpoint temperature can be used as an indirect indicator of
+        the fouling.
+      temporal_behavior: The temporal behavior of the sensor Setpoint Temperature
+        when the failure occurs would be an increase or a consistent deviation from
+        the normal setpoint temperature value over time as the fouling worsens, indicating
+        that the chiller is struggling to maintain the desired temperature due to
+        the reduced heat transfer efficiency.
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Supply Temperature can help monitor or detect the failure
+        Evaporator Water side fouling for Chiller 1 because fouling on the evaporator
+        water side increases the thermal resistance, reducing the heat transfer and
+        causing the supply temperature to rise.
+      temporal_behavior: When the failure occurs, the Supply Temperature sensor will
+        show an increasing trend over time, indicating a decrease in the chiller's
+        cooling performance.
+    Tonnage:
+      answer: 'Yes'
+      reason: The sensor Tonnage can help monitor or detect the failure Evaporator
+        Water side fouling because a decrease in tonnage would indicate a reduction
+        in the chiller's cooling capacity, which could be caused by fouling on the
+        evaporator water side.
+      temporal_behavior: When the failure Evaporator Water side fouling occurs, the
+        sensor Tonnage would show a gradual decrease over time as the fouling increases
+        and the chiller's ability to transfer heat decreases, resulting in a lower
+        cooling capacity.
+  'Heat Exchangers: Fans and: Degraded motor or worn bearing due to Normal use':
+    Chiller % Loaded:
+      answer: 'No'
+      reason: The sensor Chiller 9 Chiller % Loaded is related to the chiller's load,
+        which may not directly indicate issues with the heat exchangers' fans, such
+        as degraded motor or worn bearing due to normal use.
+      temporal_behavior: Unknown
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: The sensor Chiller 9 Condenser Water Flow can help monitor or detect
+        the failure for Chiller 9 because a degraded motor or worn bearing in the
+        heat exchanger fans can lead to reduced airflow, which in turn can affect
+        the condenser water flow rate.
+      temporal_behavior: When the failure occurs, the sensor Chiller 9 Condenser Water
+        Flow may exhibit a decrease in flow rate over time, potentially with increased
+        fluctuations or oscillations, as the worn bearing or degraded motor causes
+        the fan to vibrate or operate inefficiently, leading to reduced water flow.
+    Power Input:
+      answer: 'Yes'
+      reason: The sensor Chiller 9 Power Input can help monitor or detect the failure
+        because a degraded motor or worn bearing in the heat exchangers' fans would
+        likely cause an increase in power consumption, which can be detected by the
+        power input sensor.
+      temporal_behavior: When the failure occurs, the Chiller 9 Power Input sensor
+        would likely show an increasing trend over time, potentially with intermittent
+        spikes or fluctuations, as the motor or bearing degrades and the chiller's
+        power consumption increases to compensate for the reduced efficiency.
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Chiller 9 Return Temperature can help monitor or detect the
+        failure for Chiller 9 because a degraded motor or worn bearing in the heat
+        exchangers' fans can lead to reduced airflow, causing the chiller's cooling
+        capacity to decrease, which in turn can cause the return temperature to increase.
+      temporal_behavior: When the failure occurs, the Chiller 9 Return Temperature
+        sensor will likely show an increasing temperature reading over time, potentially
+        exceeding the normal operating range, indicating a problem with the chiller's
+        cooling performance.
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Chiller 9 Supply Temperature can help monitor or detect the
+        failure for Chiller 9 because a degraded motor or worn bearing in the heat
+        exchangers' fans can lead to reduced airflow, causing the chiller's supply
+        temperature to increase or fluctuate.
+      temporal_behavior: When the failure occurs, the Chiller 9 Supply Temperature
+        sensor may exhibit a gradual or sudden increase in temperature reading, potentially
+        exceeding the normal operating range, indicating a problem with the chiller's
+        heat exchange efficiency.
+  'Heat Exchangers: Fans: Degraded motor or worn bearing due to Normal use':
+    Chiller % Loaded:
+      answer: 'Yes'
+      reason: The sensor Chiller % Loaded can help monitor or detect the failure for
+        Chiller 1 because a degraded motor or worn bearing in the heat exchangers'
+        fans would likely lead to reduced airflow, causing the chiller to work harder
+        and potentially increasing its load.
+      temporal_behavior: When the failure occurs, the Chiller % Loaded sensor may
+        exhibit a temporal behavior of increasing load over time, potentially showing
+        a gradual or sudden rise in the percentage loaded as the chiller struggles
+        to maintain its setpoint due to reduced airflow from the faulty fans.
+    Chiller Efficiency:
+      answer: 'Yes'
+      reason: The sensor Chiller Efficiency can help monitor or detect the failure
+        for Chiller 1 because a degraded motor or worn bearing in the heat exchangers'
+        fans would likely decrease the chiller's overall efficiency, which this sensor
+        is designed to measure.
+      temporal_behavior: When the failure occurs, the Chiller Efficiency sensor would
+        likely show a gradual decrease in efficiency over time as the motor or bearing
+        degrades, potentially triggering an alert or notification when the efficiency
+        drops below a certain threshold.
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Flow can help monitor or detect the failure
+        for Chiller 1 because a degraded motor or worn bearing in the heat exchangers'
+        fans can lead to reduced airflow, which in turn can affect the condenser water
+        flow rate.
+      temporal_behavior: When the failure occurs, the Condenser Water Flow sensor
+        may exhibit a decrease in flow rate over time, potentially with increased
+        fluctuations or variability in the flow rate as the motor or bearing degradation
+        worsens.
+    Condenser Water Return To Tower Temperature:
+      answer: 'Yes'
+      reason: 'The sensor Condenser Water Return To Tower Temperature can help monitor
+        or detect the failure of Chiller 1''s Heat Exchangers: Fans: Degraded motor
+        or worn bearing due to Normal use, as a change in the fan''s performance would
+        likely affect the temperature of the condenser water returning to the tower.'
+      temporal_behavior: When the failure occurs, the Condenser Water Return To Tower
+        Temperature sensor would likely show an increase in temperature over time,
+        as the degraded motor or worn bearing reduces the fan's ability to effectively
+        cool the condenser water.
+    Condenser Water Supply To Chiller Temperature:
+      answer: 'No'
+      reason: The sensor Condenser Water Supply To Chiller Temperature is not directly
+        related to the failure of the fans' motor or worn bearing, as it measures
+        the temperature of the condenser water supply, which is not directly affected
+        by the fans' condition.
+      temporal_behavior: Unknown
+    Liquid Refrigerant Evaporator Temperature:
+      answer: 'Yes'
+      reason: The sensor Liquid Refrigerant Evaporator Temperature can help monitor
+        or detect the failure because a degraded motor or worn bearing in the fans
+        of the heat exchangers can lead to reduced airflow, which in turn can cause
+        the evaporator temperature to rise or become less stable.
+      temporal_behavior: When the failure occurs, the Liquid Refrigerant Evaporator
+        Temperature sensor may exhibit a gradual increase in temperature over time,
+        potentially with increased fluctuations or oscillations, as the reduced airflow
+        affects the heat transfer efficiency of the evaporator.
+    Power Input:
+      answer: 'Yes'
+      reason: The sensor Power Input can help monitor or detect the failure because
+        a degraded motor or worn bearing in the fans of the heat exchangers would
+        likely cause an increase in power consumption due to the reduced efficiency
+        of the motor or bearing.
+      temporal_behavior: When the failure occurs, the Power Input sensor would show
+        an increasing trend over time as the motor or bearing degrades, potentially
+        with intermittent spikes or fluctuations in power consumption as the fan's
+        performance becomes more erratic.
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Return Temperature can help monitor or detect the failure
+        for Chiller 1 because a degraded motor or worn bearing in the fans of the
+        heat exchangers can lead to reduced airflow, which in turn can cause an increase
+        in the return temperature of the chilled water.
+      temporal_behavior: When the failure occurs, the Return Temperature sensor will
+        show an increasing trend over time, potentially exceeding the normal operating
+        range, indicating a decrease in the chiller's cooling performance.
+    Setpoint Temperature:
+      answer: 'No'
+      reason: 'The sensor Setpoint Temperature is not related to the failure of Heat
+        Exchangers: Fans: Degraded motor or worn bearing due to Normal use, as it
+        monitors the desired temperature setting rather than the condition of the
+        fans or their components.'
+      temporal_behavior: Unknown
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Supply Temperature can help monitor or detect the failure
+        because a degraded motor or worn bearing in the fans of the heat exchangers
+        can lead to reduced airflow, which in turn can cause the supply temperature
+        to increase or fluctuate.
+      temporal_behavior: When the failure occurs, the Supply Temperature sensor may
+        exhibit a gradual or sudden increase in temperature reading, potentially exceeding
+        the normal operating range, indicating a problem with the heat exchanger fans.
+    Tonnage:
+      answer: 'No'
+      reason: The sensor Tonnage is not directly related to the condition of the fans
+        or their motors and bearings, and therefore cannot detect a degraded motor
+        or worn bearing due to normal use.
+      temporal_behavior: Unknown
+  Purge Unit Excessive purge:
+    Chiller % Loaded:
+      answer: 'Yes'
+      reason: The sensor Chiller % Loaded can help monitor or detect the failure Purge
+        Unit Excessive purge because an excessive purge would lead to a decrease in
+        the chiller's loading, as the chiller would be wasting energy and cooling
+        capacity on unnecessary purging.
+      temporal_behavior: When the failure Purge Unit Excessive purge occurs, the sensor
+        Chiller % Loaded would likely show a decrease in the chiller's loaded percentage
+        over time, indicating that the chiller is not operating at its optimal capacity
+        due to the excessive purging.
+    Chiller Efficiency:
+      answer: 'No'
+      reason: The sensor Chiller Efficiency is related to the overall performance
+        of the chiller, whereas the failure Purge Unit Excessive purge is related
+        to the purge unit, which is a specific component of the chiller, and there
+        is no direct relationship between the two.
+      temporal_behavior: Unknown
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Flow can help monitor or detect the failure
+        Purge Unit Excessive purge for Chiller 1 because excessive purging can lead
+        to a decrease in condenser water flow, which can be detected by the sensor.
+      temporal_behavior: When the failure Purge Unit Excessive purge occurs, the sensor
+        Condenser Water Flow may exhibit a sudden or gradual decrease in flow rate,
+        potentially triggering an alarm or alert to indicate the potential issue with
+        the purge unit.
+    Condenser Water Return To Tower Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Return To Tower Temperature can help monitor
+        or detect the failure Purge Unit Excessive purge for Chiller 1 because an
+        excessive purge can lead to a change in the condenser water temperature, which
+        this sensor measures.
+      temporal_behavior: When the failure Purge Unit Excessive purge occurs, the Condenser
+        Water Return To Tower Temperature sensor may exhibit a sudden increase or
+        fluctuation in temperature reading due to the introduction of excess air or
+        non-condensable gases into the condenser, affecting heat transfer and causing
+        temperature changes.
+    Condenser Water Supply To Chiller Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Supply To Chiller Temperature can help monitor
+        or detect the failure Purge Unit Excessive purge for Chiller 1 because excessive
+        purging can lead to changes in the condenser water temperature, which this
+        sensor measures.
+      temporal_behavior: When the failure Purge Unit Excessive purge occurs, the Condenser
+        Water Supply To Chiller Temperature may exhibit a sudden drop or fluctuation
+        in temperature due to the excessive purging of cold water, allowing for potential
+        detection of the failure.
+    Liquid Refrigerant Evaporator Temperature:
+      answer: 'Yes'
+      reason: The sensor Liquid Refrigerant Evaporator Temperature can help monitor
+        or detect the failure Purge Unit Excessive purge because an excessive purge
+        can lead to a drop in the evaporator temperature due to the removal of refrigerant
+        from the system, which can be detected by the sensor.
+      temporal_behavior: When the failure Purge Unit Excessive purge occurs, the Liquid
+        Refrigerant Evaporator Temperature will likely decrease over time as the excessive
+        purge removes refrigerant from the system, causing a reduction in the temperature.
+    Power Input:
+      answer: 'No'
+      reason: The sensor Power Input is not directly related to the failure Purge
+        Unit Excessive purge, which is more likely related to issues with the purge
+        unit or its control system, rather than the power input to the chiller.
+      temporal_behavior: Unknown
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Return Temperature can help monitor or detect the failure
+        Purge Unit Excessive purge for Chiller 1 because an excessive purge can lead
+        to a drop in the return temperature due to the introduction of cold outside
+        air into the system.
+      temporal_behavior: When the failure Purge Unit Excessive purge occurs, the Return
+        Temperature sensor will likely show a sudden and unexpected drop in temperature,
+        indicating that the chiller is taking in colder air than usual, which can
+        disrupt the normal operation of the chiller.
+    Setpoint Temperature:
+      answer: 'No'
+      reason: The sensor Setpoint Temperature is not related to the failure Purge
+        Unit Excessive purge, as it measures the desired temperature, whereas the
+        purge unit is related to the removal of air or non-condensable gases from
+        the chiller system.
+      temporal_behavior: Unknown
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Supply Temperature can help monitor or detect the failure
+        Purge Unit Excessive purge for Chiller 1 because an excessive purge can lead
+        to a drop in supply temperature due to the introduction of cold refrigerant
+        or reduced system pressure.
+      temporal_behavior: When the failure Purge Unit Excessive purge occurs, the sensor
+        Supply Temperature will likely show a sudden drop in temperature, potentially
+        followed by fluctuations or instability in the temperature reading as the
+        system tries to compensate for the excessive purge.
+    Tonnage:
+      answer: 'No'
+      reason: The sensor Tonnage is not directly related to the failure Purge Unit
+        Excessive purge, which is more related to the purge unit's performance and
+        gas management, rather than the chiller's cooling capacity or tonnage.
+      temporal_behavior: Unknown
+  Refrigerant Operated Control Valve Failed spring:
+    Chiller % Loaded:
+      answer: 'No'
+      reason: The sensor Chiller % Loaded is related to the chiller's operating capacity,
+        whereas the failure of the Refrigerant Operated Control Valve is related to
+        the control of refrigerant flow, and there is no direct relationship between
+        the two, making it unlikely for the sensor to detect the failure.
+      temporal_behavior: Unknown
+    Chiller Efficiency:
+      answer: 'No'
+      reason: the sensor Chiller Efficiency is not directly related to the failure
+        of the Refrigerant Operated Control Valve, as it monitors the overall efficiency
+        of the chiller, not the specific operation of the control valve.
+      temporal_behavior: Unknown
+    Condenser Water Flow:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Flow can help monitor or detect the failure
+        of the Refrigerant Operated Control Valve because a failed valve may affect
+        the flow of refrigerant, which in turn can impact the condenser water flow,
+        allowing the sensor to detect anomalies.
+      temporal_behavior: When the failure occurs, the Condenser Water Flow sensor
+        may exhibit a decrease or abnormal fluctuation in flow rate, as the failed
+        valve disrupts the normal refrigeration cycle, potentially causing a reduction
+        in condenser water flow or making it more erratic.
+    Condenser Water Return To Tower Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Return To Tower Temperature can help monitor
+        or detect the failure of the Refrigerant Operated Control Valve in Chiller
+        1 because a faulty control valve can disrupt the normal refrigeration process,
+        leading to changes in the condenser water temperature.
+      temporal_behavior: When the failure occurs, the Condenser Water Return To Tower
+        Temperature sensor may exhibit a higher-than-normal temperature reading due
+        to reduced heat transfer efficiency, and this abnormal temperature reading
+        can persist until the failure is addressed.
+    Condenser Water Supply To Chiller Temperature:
+      answer: 'Yes'
+      reason: The sensor Condenser Water Supply To Chiller Temperature can help monitor
+        or detect the failure of the Refrigerant Operated Control Valve because a
+        failed valve can affect the temperature of the condenser water, which is directly
+        related to the chiller's performance and efficiency.
+      temporal_behavior: When the failure occurs, the temperature of the condenser
+        water supply to the chiller may increase or fluctuate abnormally, as the valve's
+        failure can disrupt the normal flow and pressure of refrigerant, leading to
+        inefficient heat transfer and a subsequent rise in condenser water temperature.
+    Liquid Refrigerant Evaporator Temperature:
+      answer: 'Yes'
+      reason: The sensor Liquid Refrigerant Evaporator Temperature can help monitor
+        or detect the failure of the Refrigerant Operated Control Valve because a
+        failed valve can disrupt the normal flow of refrigerant, leading to abnormal
+        temperature readings in the evaporator.
+      temporal_behavior: When the failure occurs, the Liquid Refrigerant Evaporator
+        Temperature sensor will likely show an increase in temperature over time as
+        the evaporator's ability to absorb heat from the chilled water is impaired
+        due to the reduced or blocked refrigerant flow.
+    Power Input:
+      answer: 'No'
+      reason: The reason is that the Power Input sensor is related to the overall
+        energy consumption of the chiller, whereas the Refrigerant Operated Control
+        Valve Failed spring is a specific mechanical component failure that may not
+        directly affect the power input.
+      temporal_behavior: Unknown
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Return Temperature can help monitor or detect the failure
+        of the Refrigerant Operated Control Valve because a failed valve can disrupt
+        the normal refrigeration process, leading to abnormal temperature readings.
+      temporal_behavior: When the failure occurs, the Return Temperature sensor may
+        exhibit a temporal behavior of increasing temperature over time, potentially
+        exceeding the normal operating range, as the chiller's ability to cool the
+        refrigerant is compromised.
+    Setpoint Temperature:
+      answer: 'No'
+      reason: The sensor Setpoint Temperature is not directly related to the Refrigerant
+        Operated Control Valve, and its measurement is not affected by the valve's
+        failure, so it cannot help monitor or detect the failure for Chiller 1.
+      temporal_behavior: Unknown
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Supply Temperature can help monitor or detect the failure
+        of Refrigerant Operated Control Valve Failed spring for Chiller 1 because
+        a faulty control valve can disrupt the normal refrigeration process, leading
+        to abnormal temperature readings.
+      temporal_behavior: When the failure occurs, the Supply Temperature sensor may
+        exhibit a temporal behavior of increasing temperature readings over time,
+        potentially exceeding the normal operating range, as the chiller's ability
+        to cool is compromised.
+    Tonnage:
+      answer: 'No'
+      reason: The sensor Tonnage is not directly related to the Refrigerant Operated
+        Control Valve, and its measurement is not expected to change or be affected
+        when the valve's spring fails.
+      temporal_behavior: Unknown
