@@ -79,9 +79,11 @@ class SupervisorSpecialistRunner:
         log_dir: Path | None = None,
         reference_date: str | None = None,
         mcp_tools: MCPToolClient | None = None,
+        parallel: bool = False,
     ) -> None:
         self._llm = llm
         self._max_steps = max_steps
+        self._parallel = parallel
         self._ref = _resolve_reference_date(reference_date)
         self._dialog_thread_id = f"dialog_{uuid.uuid4().hex}"
         self._dialog_started = False
@@ -108,6 +110,7 @@ class SupervisorSpecialistRunner:
                 artifact_store=artifact_store,
                 behavior_log=behavior_log,
                 event_stream=event_stream,
+                enable_parallel=parallel,
             )
 
         deps = Dependencies(

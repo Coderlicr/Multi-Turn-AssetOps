@@ -17,10 +17,17 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
 - [Plan-Execute Runner](#plan-execute-runner)
   - [How it works](#how-it-works)
   - [CLI](#cli)
-  - [End-to-end example](#end-to-end-example)
+  - [End-to-end examples](#end-to-end-examples)
   - [Python API](#python-api)
   - [Bring your own LLM](#bring-your-own-llm)
   - [Add more MCP servers](#add-more-mcp-servers)
+- [Supervisor-Specialist Runner](#supervisor-specialist-runner)
+  - [How it works](#how-it-works-1)
+  - [CLI](#cli-1)
+  - [Multi-turn dialog](#multi-turn-dialog)
+  - [Parallel Specialist tool calls](#parallel-specialist-tool-calls)
+  - [Behavior logs](#behavior-logs)
+  - [Python API](#python-api-1)
 - [Connect to Claude Desktop](#connect-to-claude-desktop)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
@@ -107,7 +114,7 @@ uv run vibration-mcp-server
 | `WO_DBNAME`          | `workorder`             | Work order database name      |
 | `VIBRATION_DBNAME`   | `vibration`             | Vibration sensor database name |
 
-**WatsonX** — plan-execute runner (when `--model-id` starts with `watsonx/`)
+**WatsonX** — plan-execute and supervisor-specialist runners (when `--model-id` starts with `watsonx/`)
 
 | Variable             | Default                             | Description                 |
 | -------------------- | ----------------------------------- | --------------------------- |
@@ -115,12 +122,20 @@ uv run vibration-mcp-server
 | `WATSONX_PROJECT_ID` | _(required)_                        | IBM WatsonX project ID      |
 | `WATSONX_URL`        | `https://us-south.ml.cloud.ibm.com` | WatsonX endpoint (optional) |
 
-**LiteLLM** — plan-execute runner (when `--model-id` does not start with `watsonx/`, e.g. `litellm_proxy/…`)
+**LiteLLM** — plan-execute and supervisor-specialist runners (when `--model-id` does not start with `watsonx/`, e.g. `litellm_proxy/…`)
 
 | Variable           | Default      | Description                                                          |
 | ------------------ | ------------ | -------------------------------------------------------------------- |
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
+
+**Supervisor-Specialist** — optional runtime controls
+
+| Variable                              | Default                                                                  | Description                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `SS_MODEL_ID`                         | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8`              | Default model for `supervisor-specialist`                                   |
+| `SS_MAX_STEPS`                        | `12`                                                                     | Maximum graph/specialist steps per turn                                     |
+| `SUPERVISOR_SPECIALIST_PARALLELISM`   | `4`                                                                      | Maximum concurrent tool calls inside one Specialist parallel batch          |
 
 ---
 
@@ -389,6 +404,218 @@ runner = PlanExecuteRunner(
 
 ---
 
+## Supervisor-Specialist Runner
+
+`src/agent/supervisor_specialist/` is a LangGraph-based multi-agent runner for industrial asset operations. It is designed for closed-loop diagnostic workflows where one Supervisor routes work to domain Specialists and carries compact state across steps and, optionally, dialog turns.
+
+### How it works
+
+```
+SupervisorSpecialistRunner.run(question) or run_turn(question)
+  │
+  ├─ 1. prepare_turn
+  │      Parse the latest user message, merge active site/assets/time window,
+  │      reset per-turn transient fields, and retain prior artifacts in memory.
+  │
+  ├─ 2. supervisor
+  │      Inspect current case state, structured memory, artifact summaries,
+  │      and the latest user request; choose the next Specialist or final answer.
+  │
+  ├─ 3. specialist
+  │      Execute a compact ReAct loop over allowed MCP tools, save artifacts,
+  │      and return compact tool-call summaries.
+  │
+  ├─ 4. supervisor loop
+  │      Re-plan after each Specialist result until enough evidence exists.
+  │
+  └─ 5. respond_to_user
+         Generate the final answer, update rolling conversation memory,
+         and append JSONL behavior logs.
+```
+
+The current Specialists are:
+
+| Specialist | Main responsibility |
+| --- | --- |
+| `data_collection_specialist` | Site/asset/sensor discovery and historical IoT CSV generation |
+| `time_series_analysis_specialist` | Statistics, forecasting, anomaly detection, and TSFM outputs |
+| `failure_reasoning_specialist` | Failure-mode reasoning using FMSR and prior artifacts |
+| `maintenance_planning_specialist` | Work-order review and recommended maintenance actions |
+
+The graph state includes `case_state`, `current_user_message`, `conversation_memory`, current task, recent artifacts, per-turn artifact IDs, per-turn tool summaries, and final response. Large CSV/JSON data is passed by artifact path; prompts receive summaries and references rather than full datasets.
+
+### CLI
+
+After `uv sync`, the `supervisor-specialist` command is available:
+
+```bash
+uv run supervisor-specialist --reference-date 2020-06-20 \
+  "The temperature of our chiller at Site MAIN seems unusually high lately. Can you look into it?"
+```
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--model-id MODEL_ID` | LiteLLM model string with provider prefix. Defaults to `SS_MODEL_ID` or the built-in WatsonX model. |
+| `--max-steps N` | Maximum graph/specialist steps per turn. Defaults to `SS_MAX_STEPS` or `12`. |
+| `--reference-date YYYY-MM-DD` | Anchor date for relative time windows such as `past month`. |
+| `--multi-turn` | Start a REPL and retain in-memory conversation state across turns. |
+| `--parallel` | Enable parallel Specialist tool batches and deterministic multi-asset coverage guards. |
+| `--no-stream` | Suppress streaming event output on stderr. |
+| `--no-log` | Suppress persistent behavior logs under `logs/supervisor_specialist/`. |
+
+Examples:
+
+```bash
+# Single-turn diagnosis
+uv run supervisor-specialist --reference-date 2020-06-20 \
+  "Investigate high temperature at Site MAIN over the past month."
+
+# Multi-asset comparison with parallel Specialist tool calls
+uv run supervisor-specialist --parallel --reference-date 2020-06-20 \
+  "Compare Chiller 3, Chiller 4, Chiller 6, and Chiller 9 over the past month."
+
+# Use another model
+uv run supervisor-specialist --model-id watsonx/ibm/granite-3-3-8b-instruct \
+  "List assets at site MAIN and summarize what data is available."
+```
+
+### Multi-turn dialog
+
+`--multi-turn` starts a CLI REPL. The runner uses one LangGraph `thread_id` and an in-memory `MemorySaver` checkpoint for the whole REPL session. It does not persist sessions across processes.
+
+```bash
+uv run supervisor-specialist --multi-turn --reference-date 2020-06-20
+> Which chillers at Site MAIN have temperature anomalies over the past month?
+> What could be causing this?
+> Use the same period and recommend maintenance actions.
+> exit
+```
+
+Conversation memory tracks:
+
+| Memory field | Purpose |
+| --- | --- |
+| active site/assets/time window | Lets follow-up questions reuse prior context such as `same period` or `this chiller`. |
+| focus metrics | Carries metrics such as temperature, efficiency, power, load, tonnage, work orders, and alerts. |
+| rolling summary | Compact summary of recent turns for future prompts. |
+| recent turns | User message, assistant answer, artifact IDs, compact tool-call summaries, root cause, and actions. |
+| active artifact IDs | References to datasets, analysis results, reasoning results, and plans already generated. |
+
+Time-window parsing currently supports:
+
+| User phrase | Behavior |
+| --- | --- |
+| `same period` | Reuses the previous active time window. |
+| `past month`, `last month`, `recently` | Uses 30 days ending at `--reference-date` or current UTC date. |
+| `last two months`, `past two months`, `last 2 months` | Uses 60 days ending at `--reference-date` or current UTC date. |
+| `June 2020` | Uses `2020-06-01T00:00:00` to `2020-07-01T00:00:00`. |
+
+### Parallel Specialist tool calls
+
+Parallel execution is opt-in:
+
+```bash
+uv run supervisor-specialist --parallel --reference-date 2020-06-20 \
+  "Run anomaly analysis for Chiller 3, Chiller 4, Chiller 6, and Chiller 9."
+```
+
+Without `--parallel`, Specialists are constrained to one tool call per ReAct step. If an LLM returns a batch unexpectedly, only the first call is executed.
+
+With `--parallel`, a Specialist may return:
+
+```json
+{
+  "tool_calls": [
+    {"tool_name": "tsfm.run_integrated_tsad", "args": {"dataset_path": "/path/chiller_3.csv"}},
+    {"tool_name": "tsfm.run_integrated_tsad", "args": {"dataset_path": "/path/chiller_4.csv"}}
+  ]
+}
+```
+
+The MCP client executes independent calls concurrently with `asyncio` and preserves result order. The concurrency limit defaults to `4` and can be changed with:
+
+```bash
+SUPERVISOR_SPECIALIST_PARALLELISM=2 uv run supervisor-specialist --parallel "..."
+```
+
+Parallel mode also enables deterministic multi-asset coverage guards. If asset discovery finds multiple chillers and later artifacts expose multiple CSV paths, the data-collection and time-series Specialists ensure each known asset receives the expected collection/statistics/TSFM coverage instead of silently narrowing to one asset.
+
+### Behavior logs
+
+Behavior logs are JSONL files written to:
+
+```text
+logs/supervisor_specialist/case_<timestamp>_<id>.jsonl
+```
+
+Single-turn and multi-turn logs use the same top-level schema:
+
+```json
+{
+  "timestamp": "2026-04-28T00:00:00+00:00",
+  "case_id": "case_20260428000000_ab12cd",
+  "agent_role": "time_series_analysis_specialist",
+  "task_type": "anomaly_analysis",
+  "input_artifact_ids": ["..."],
+  "tool_calls": [],
+  "output_artifact_ids": ["..."],
+  "status": "ok"
+}
+```
+
+Multi-turn logs include `turn_id`:
+
+```json
+{"turn_id": "turn_001"}
+```
+
+Parallel tool calls include per-call metadata:
+
+```json
+{
+  "tool_name": "tsfm.run_integrated_tsad",
+  "parallel_group_id": "pg_1234abcd",
+  "parallel_index": 1,
+  "parallel_size": 4
+}
+```
+
+The final response is also logged by the `respond_to_user` entry using `task_type: "final_response"`.
+
+### Python API
+
+```python
+import asyncio
+
+from agent.supervisor_specialist.runner import SupervisorSpecialistRunner
+from llm import LiteLLMBackend
+
+llm = LiteLLMBackend("watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8")
+runner = SupervisorSpecialistRunner(
+    llm=llm,
+    reference_date="2020-06-20",
+    parallel=True,
+)
+
+answer = asyncio.run(runner.run("Compare Chiller 6 and Chiller 9 over the past month."))
+print(answer)
+```
+
+For multi-turn workflows, reuse the same runner and call `run_turn` repeatedly:
+
+```python
+async def main():
+    runner = SupervisorSpecialistRunner(llm=llm, reference_date="2020-06-20")
+    print(await runner.run_turn("Find anomalies at Site MAIN over the past month."))
+    print(await runner.run_turn("What could be causing this?"))
+
+asyncio.run(main())
+```
+
+---
+
 ## Connect to Claude Desktop
 
 Add the following to your Claude Desktop `claude_desktop_config.json`:
@@ -461,6 +688,7 @@ uv run pytest src/servers/fmsr/tests/ -k "not integration"
 uv run pytest src/servers/tsfm/tests/ -k "not integration"
 uv run pytest src/servers/wo/tests/test_tools.py -k "not integration"
 uv run pytest src/agent/tests/
+uv run python -m pytest src/agent/supervisor_specialist -q
 ```
 
 ### Work order integration tests (requires CouchDB + populated `workorder` db)
@@ -480,6 +708,8 @@ uv run pytest src/ -v
 ---
 
 ## Architecture
+
+Plan-Execute is the simpler planner/executor path:
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -501,3 +731,27 @@ uv run pytest src/ -v
         iot     utilities    fmsr       tsfm    wo      vibration
       (tools)    (tools)    (tools)   (tools) (tools)    (tools)
 ```
+
+Supervisor-Specialist is the LangGraph multi-agent path:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│              agent/supervisor_specialist/                      │
+│                                                                │
+│  prepare_turn → supervisor ─┬→ data_collection_specialist ─┐   │
+│                             ├→ time_series_analysis         │   │
+│                             ├→ failure_reasoning            │   │
+│                             ├→ maintenance_planning         │   │
+│                             └→ respond_to_user              │   │
+│                                      ▲                       │   │
+│                                      └──── artifact store,   │   │
+│                                            memory, logs      │   │
+└──────────────────────────────────────┬─────────────────────────┘
+                                       │ MCP protocol (stdio)
+         ┌─────────────────────────────┼──────────┬──────┬───────────┐
+         ▼                             ▼          ▼      ▼           ▼
+        iot                        utilities    fmsr   tsfm          wo
+      (data)                       (helpers)  (reason) (analysis) (orders)
+```
+
+Use `plan-execute` for general MCP planning and simple tool orchestration. Use `supervisor-specialist` for asset-operations dialogs where memory, artifacts, domain Specialists, behavior logs, and optional multi-asset parallel analysis matter.

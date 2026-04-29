@@ -286,8 +286,11 @@ async def test_cli_multi_turn_repl_runs_until_quit(monkeypatch, capsys):
     import agent.supervisor_specialist.runner as runner_mod
     import llm.litellm as litellm_mod
 
+    created_kwargs = {}
+
     class DummyRunner:
         def __init__(self, **kwargs) -> None:
+            created_kwargs.update(kwargs)
             self.questions: list[str] = []
 
         async def run_turn(self, question: str) -> str:
@@ -308,9 +311,11 @@ async def test_cli_multi_turn_repl_runs_until_quit(monkeypatch, capsys):
             no_log=True,
             reference_date="2020-06-20",
             multi_turn=True,
+            parallel=True,
         )
     )
 
     out = capsys.readouterr().out
     assert "answer:first turn" in out
     assert "answer:second turn" in out
+    assert created_kwargs["parallel"] is True
