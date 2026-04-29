@@ -90,7 +90,7 @@ Critical rules:
 - Do NOT repeat a tool that already succeeded with the same arguments
 - If a tool has FAILED and you are about to call it again with essentially the same arguments, do NOT retry — output {{"done": true}} or try a completely different tool instead
 - When you receive a CSV file path (from any prior tool result or input artifact) and you are unsure of the column names, call utilities.csv_stats with ONLY the csv_path (omit the columns parameter) first — this returns all_columns so you know the exact column names before making further calls
-
+{extra_rules}
 JSON:"""
 
 
@@ -134,7 +134,7 @@ Use EXACTLY this schema:
 Rules:
 - artifact_type must be one of: {allowed_artifact_types}
 - payload MUST include concrete quantitative findings from tool results — do NOT write only prose descriptions:
-  * For anomaly detection results: include anomaly_count, top anomaly timestamps (up to 10), and which columns had the most anomalies
+  * For anomaly detection results: organize by asset first, then by column — e.g. {{"Chiller 3": {{"Supply Temperature": {{"anomaly_count": 345}}, ...}}, "Chiller 9": {{...}}}}; never aggregate across assets — each asset must have its own anomaly counts; always include the results_file path per asset
   * For sensor/CSV data: include key stats (mean, std, min, max) for the most relevant columns
   * For work orders: include counts, types, and date ranges
   * Always include csv_path or file paths from tool results so downstream specialists can use them
@@ -202,6 +202,7 @@ class SpecialistAgent(ABC):
     role_prefix: str
     allowed_tools: set[str]
     allowed_artifact_types: tuple[str, ...]
+    _extra_react_rules: str = ""  # Subclasses can override to inject role-specific rules
 
     def __init__(
         self,
@@ -323,6 +324,7 @@ class SpecialistAgent(ABC):
                 input_artifacts_summary=format_artifacts_summary(input_artifacts),
                 tool_schemas=format_tool_schemas_for_prompt(tool_schemas),
                 prior_results=_format_react_results(results),
+                extra_rules=self._extra_react_rules,
             )
 
             raw = await call_llm(self.llm, prompt)
