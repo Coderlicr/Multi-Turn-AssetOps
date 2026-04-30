@@ -219,3 +219,6 @@ tsad_model_save/
 
 # Testing Scripts
 tests/
+
+# WandB local run data
+wandb/

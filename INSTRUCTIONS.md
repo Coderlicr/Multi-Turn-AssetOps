@@ -122,6 +122,36 @@ uv run vibration-mcp-server
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
 
+**Profiling** — all optional; enable by setting the relevant keys in `.env`
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `LANGCHAIN_API_KEY` | _(unset)_ | LangSmith API key. Get one at [smith.langchain.com](https://smith.langchain.com). When set, every LiteLLM call is traced automatically. On the `supervisor-specialist` branch, LangGraph also adds graph-level traces (per supervisor step, per specialist node). |
+| `LANGCHAIN_TRACING_V2` | _(unset)_ | Set to `true` to enable LangGraph graph-level tracing in LangSmith (required in addition to `LANGCHAIN_API_KEY` for graph traces). |
+| `LANGCHAIN_PROJECT` | `default` | LangSmith project name to group traces under. |
+| `WANDB_API_KEY` | _(unset)_ | WandB API key. Get one at [wandb.ai](https://wandb.ai). When set, the profiling harness logs token counts, latency, and turn statistics to WandB after each dialog. |
+| `WANDB_PROJECT` | `multi-turn-assetops` | WandB project name. |
+| `LITELLM_METRICS_FILE` | _(unset)_ | Path for per-call token/latency records (JSONL). Set automatically by the profiling harness — no need to set manually. |
+
+To activate profiling, add the keys to `.env` and source it before running:
+
+```bash
+# .env additions
+LANGCHAIN_API_KEY=lsv2_pt_...
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_PROJECT=multi-turn-assetops
+WANDB_API_KEY=...
+WANDB_PROJECT=multi-turn-assetops
+```
+
+```bash
+# Source .env and run the profiling harness
+set -a && source .env && set +a
+uv run python eval/run_eval.py --system supervisor-specialist --dialogs 6
+```
+
+`wandb` is included in the project dependencies (`pyproject.toml`) and installed by `uv sync`. LangSmith tracing is built into LiteLLM and requires no additional packages.
+
 ---
 
 ## MCP Servers
