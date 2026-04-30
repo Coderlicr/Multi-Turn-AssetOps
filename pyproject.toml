@@ -30,6 +30,7 @@ dependencies = [
     "huggingface-hub>=0.34.0,<1.0",
     "python-dotenv>=1.0",
     "scipy>=1.10.0",
+    "wandb>=0.26.1",
 ]
 
 [project.scripts]
