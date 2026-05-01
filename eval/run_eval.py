@@ -160,11 +160,15 @@ def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict) -> None:
     })
 
 
-def _wandb_log_turns(wandb, result: dict) -> None:
-    """Log per-turn metrics with one metric namespace per dialog."""
+def _wandb_log_turns(wandb, result: dict, turn_offset: int = 0) -> None:
+    """Log per-turn metrics using a globally unique turn index.
+
+    turn_offset is the total number of turns already logged across all
+    previous dialogs, so turn/index is unique across the whole run and
+    turn/* keys stay one level deep (matching the define_metric glob).
+    """
     ok_so_far = 0
     dialog_id = result["dialog_id"]
-    dialog_key = f"dialog_{dialog_id:02d}"
 
     for turn in result.get("turns", []):
         turn_index = turn.get("turn_index", 0)
@@ -174,16 +178,26 @@ def _wandb_log_turns(wandb, result: dict) -> None:
 
         response = turn.get("response") or ""
         duration_s = turn.get("duration_seconds") or 0.0
+        dialog_key = f"dialog_{dialog_id:02d}"
         wandb.log({
-            "turn/index": turn_index,
+            # cross-dialog view: all turns on one continuous x-axis
+            "turn/index": turn_offset + turn_index,
             "turn/dialog_id": dialog_id,
-            f"turn/{dialog_key}/duration_s": duration_s,
-            f"turn/{dialog_key}/status_ok": 1 if status == "ok" else 0,
-            f"turn/{dialog_key}/response_chars": len(response),
-            f"turn/{dialog_key}/cumulative_success_rate": (
+            "turn/turn_in_dialog": turn_index,
+            "turn/duration_s": duration_s,
+            "turn/status_ok": 1 if status == "ok" else 0,
+            "turn/response_chars": len(response),
+            "turn/cumulative_success_rate": (
                 ok_so_far / turn_index if turn_index else 0
             ),
-            f"turn/{dialog_key}/status": status,
+            "turn/status": status,
+            # per-dialog view: each dialog gets its own charts, x-axis is 1..N
+            f"per_dialog/{dialog_key}/duration_s": duration_s,
+            f"per_dialog/{dialog_key}/status_ok": 1 if status == "ok" else 0,
+            f"per_dialog/{dialog_key}/response_chars": len(response),
+            f"per_dialog/{dialog_key}/cumulative_success_rate": (
+                ok_so_far / turn_index if turn_index else 0
+            ),
         })
 
 
@@ -490,6 +504,7 @@ async def run_all(
     all_results: list[dict] = []
     all_llm_metrics: list[dict] = []
     overall_start = time.monotonic()
+    turn_offset = 0  # globally unique turn counter across all dialogs
 
     for scenario in scenarios:
         try:
@@ -515,7 +530,8 @@ async def run_all(
 
         if wandb and llm_metrics:
             _wandb_log_dialog(wandb, result, llm_metrics)
-            _wandb_log_turns(wandb, result)
+            _wandb_log_turns(wandb, result, turn_offset)
+        turn_offset += len(result.get("turns", []))
 
     # ── summary ───────────────────────────────────────────────────────────────
     counts = {s: sum(1 for r in all_results if r["status"] == s)
