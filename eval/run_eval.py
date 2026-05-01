@@ -26,7 +26,8 @@ Profiling integrations (all opt-in via env vars):
                  traces (per supervisor step, per specialist node) on top.
 
     WandB      — set WANDB_API_KEY. The harness calls wandb.log() after each
-                 dialog with token counts, latency, and turn statistics.
+                 dialog and each turn with token counts, latency, and turn
+                 statistics.
                  Install with: uv add wandb
 
 Output per run (in --output-dir):
@@ -50,9 +51,52 @@ from typing import Optional
 REPO_ROOT = pathlib.Path(__file__).parent.parent
 EVAL_OUT_ROOT = REPO_ROOT / "eval" / "results"
 BEHAVIOR_LOG_DIR = REPO_ROOT / "logs" / "supervisor_specialist"
+BASE_ENV_FILE = REPO_ROOT / ".env"
+PROFILING_ENV_FILE = REPO_ROOT / ".env.profiling"
 
 PER_TURN_TIMEOUT = 360    # seconds
 PER_DIALOG_TIMEOUT = 1500  # seconds (25 min hard cap)
+
+PROFILE_ENV_KEYS = (
+    "LANGCHAIN_API_KEY",
+    "LANGCHAIN_PROJECT",
+    "WANDB_API_KEY",
+    "WANDB_PROJECT",
+)
+
+
+# ── environment helpers ───────────────────────────────────────────────────────
+
+def _load_eval_env() -> None:
+    """Load runtime env first, then profiling-only env for the harness."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+
+    if BASE_ENV_FILE.exists():
+        load_dotenv(BASE_ENV_FILE)
+        _warn_profile_keys_in_base_env()
+    if PROFILING_ENV_FILE.exists():
+        load_dotenv(PROFILING_ENV_FILE, override=True)
+
+
+def _warn_profile_keys_in_base_env() -> None:
+    """Warn when profiling keys are still stored in .env."""
+    try:
+        text = BASE_ENV_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return
+    present = [
+        key for key in PROFILE_ENV_KEYS
+        if any(line.strip().startswith(f"{key}=") for line in text.splitlines())
+    ]
+    if present:
+        print(
+            "Warning: profiling key(s) still appear in .env: "
+            f"{', '.join(present)}. Move them to .env.profiling so MCP "
+            "subprocesses do not reload profiling credentials."
+        )
 
 
 # ── WandB helper ──────────────────────────────────────────────────────────────
@@ -70,6 +114,10 @@ def _wandb_init(run_id: str, system: str, dialog_ids: Optional[list[int]]) -> Op
             tags=[system] + ([f"dialog_{d}" for d in dialog_ids] if dialog_ids else ["all"]),
             config={"system": system, "run_id": run_id, "dialog_ids": dialog_ids or "all"},
         )
+        wandb.define_metric("dialog/id")
+        wandb.define_metric("dialog/*", step_metric="dialog/id")
+        wandb.define_metric("turn/index")
+        wandb.define_metric("turn/*", step_metric="turn/index")
         print(f"WandB run: {run.url}")
         return wandb
     except ImportError:
@@ -86,33 +134,57 @@ def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict) -> None:
     wall_s = result.get("duration_seconds") or 0.0
     llm_s = llm_metrics.get("llm_latency_s", 0.0)
 
-    wandb.log(
-        {
-            # identity
-            "dialog/id": result["dialog_id"],
-            "dialog/category": result["category"],
-            "dialog/status": result["status"],
-            # turn counts
-            "dialog/turns_ok": turns_ok,
-            "dialog/turns_total": turns_total,
-            "dialog/turn_success_rate": turns_ok / turns_total if turns_total else 0,
-            # wall-clock latency
-            "latency/wall_s": wall_s,
-            "latency/wall_per_turn_s": wall_s / turns_ok if turns_ok else 0,
-            # LLM call metrics (from LITELLM_METRICS_FILE)
-            "tokens/prompt": llm_metrics.get("prompt_tokens", 0),
-            "tokens/completion": llm_metrics.get("completion_tokens", 0),
-            "tokens/total": llm_metrics.get("total_tokens", 0),
-            "tokens/per_turn": llm_metrics.get("total_tokens", 0) / turns_ok if turns_ok else 0,
-            "llm/calls": llm_metrics.get("llm_calls", 0),
-            "llm/calls_per_turn": llm_metrics.get("llm_calls", 0) / turns_ok if turns_ok else 0,
-            "llm/latency_s": llm_s,
-            # derived: how much of wall time was LLM vs tool/routing overhead
-            "llm/fraction_of_wall": llm_s / wall_s if wall_s else 0,
-            "llm/tool_overhead_s": max(wall_s - llm_s, 0),
-        },
-        step=result["dialog_id"],
-    )
+    wandb.log({
+        # identity
+        "dialog/id": result["dialog_id"],
+        "dialog/category": result["category"],
+        "dialog/status": result["status"],
+        # turn counts
+        "dialog/turns_ok": turns_ok,
+        "dialog/turns_total": turns_total,
+        "dialog/turn_success_rate": turns_ok / turns_total if turns_total else 0,
+        # wall-clock latency
+        "latency/wall_s": wall_s,
+        "latency/wall_per_turn_s": wall_s / turns_ok if turns_ok else 0,
+        # LLM call metrics (from LITELLM_METRICS_FILE)
+        "tokens/prompt": llm_metrics.get("prompt_tokens", 0),
+        "tokens/completion": llm_metrics.get("completion_tokens", 0),
+        "tokens/total": llm_metrics.get("total_tokens", 0),
+        "tokens/per_turn": llm_metrics.get("total_tokens", 0) / turns_ok if turns_ok else 0,
+        "llm/calls": llm_metrics.get("llm_calls", 0),
+        "llm/calls_per_turn": llm_metrics.get("llm_calls", 0) / turns_ok if turns_ok else 0,
+        "llm/latency_s": llm_s,
+        # derived: how much of wall time was LLM vs tool/routing overhead
+        "llm/fraction_of_wall": llm_s / wall_s if wall_s else 0,
+        "llm/tool_overhead_s": max(wall_s - llm_s, 0),
+    })
+
+
+def _wandb_log_turns(wandb, result: dict) -> None:
+    """Log per-turn metrics with one metric namespace per dialog."""
+    ok_so_far = 0
+    dialog_id = result["dialog_id"]
+    dialog_key = f"dialog_{dialog_id:02d}"
+
+    for turn in result.get("turns", []):
+        turn_index = turn.get("turn_index", 0)
+        status = turn.get("status", "unknown")
+        if status == "ok":
+            ok_so_far += 1
+
+        response = turn.get("response") or ""
+        duration_s = turn.get("duration_seconds") or 0.0
+        wandb.log({
+            "turn/index": turn_index,
+            "turn/dialog_id": dialog_id,
+            f"turn/{dialog_key}/duration_s": duration_s,
+            f"turn/{dialog_key}/status_ok": 1 if status == "ok" else 0,
+            f"turn/{dialog_key}/response_chars": len(response),
+            f"turn/{dialog_key}/cumulative_success_rate": (
+                ok_so_far / turn_index if turn_index else 0
+            ),
+            f"turn/{dialog_key}/status": status,
+        })
 
 
 # ── LLM metrics file helpers ──────────────────────────────────────────────────
@@ -138,6 +210,41 @@ def _read_llm_metrics(path: pathlib.Path) -> dict:
         "total_tokens": sum(c.get("total_tokens", 0) for c in calls),
         "llm_latency_s": round(sum(c.get("latency_s", 0.0) for c in calls), 3),
     }
+
+
+# ── child process environment helpers ─────────────────────────────────────────
+
+def _make_child_env(metrics_path: pathlib.Path) -> dict[str, str]:
+    """
+    Build the supervisor-specialist subprocess env.
+
+    The eval harness may use WandB/LangSmith itself, but MCP servers communicate
+    over stdio and expect stdout to contain only JSON-RPC. Prevent WandB console
+    banners from leaking into those streams.
+    """
+    child_env = dict(os.environ)
+    for key in list(child_env):
+        if key.startswith("WANDB_"):
+            del child_env[key]
+
+    for key in (
+        "WANDB_API_KEY",
+        "WANDB_BASE_URL",
+        "WANDB_ENTITY",
+        "WANDB_PROJECT",
+        "WANDB_RUN_ID",
+        "WANDB_RUN_GROUP",
+        "WANDB_RUN_NAME",
+        "WANDB_TAGS",
+    ):
+        child_env[key] = ""
+
+    child_env["LITELLM_METRICS_FILE"] = str(metrics_path)
+    child_env["WANDB_DISABLED"] = "true"
+    child_env["WANDB_SILENT"] = "true"
+    child_env["WANDB_CONSOLE"] = "off"
+    child_env["WANDB_MODE"] = "disabled"
+    return child_env
 
 
 # ── subprocess helpers ────────────────────────────────────────────────────────
@@ -228,8 +335,8 @@ async def run_dialog(
     stderr_path = output_dir / f"dialog_{dialog_id:02d}_stderr.txt"
     metrics_path = output_dir / f"dialog_{dialog_id:02d}_llm_metrics.jsonl"
 
-    # Pass metrics file path so LiteLLMBackend writes per-call records.
-    child_env = {**os.environ, "LITELLM_METRICS_FILE": str(metrics_path)}
+    # Pass metrics file path while keeping WandB output out of MCP stdio.
+    child_env = _make_child_env(metrics_path)
 
     result: dict = {
         "dialog_id": dialog_id,
@@ -408,6 +515,7 @@ async def run_all(
 
         if wandb and llm_metrics:
             _wandb_log_dialog(wandb, result, llm_metrics)
+            _wandb_log_turns(wandb, result)
 
     # ── summary ───────────────────────────────────────────────────────────────
     counts = {s: sum(1 for r in all_results if r["status"] == s)
@@ -479,6 +587,8 @@ async def run_all(
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    _load_eval_env()
+
     parser = argparse.ArgumentParser(
         description="Run evaluation harness with profiling.",
         formatter_class=argparse.RawDescriptionHelpFormatter,

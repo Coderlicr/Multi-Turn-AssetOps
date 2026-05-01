@@ -271,7 +271,7 @@ def _get_ttm_hf_inference(
     model = TinyTimeMixerForPrediction.from_pretrained(
         model_checkpoint, prediction_filter_length=forecast_horizon
     )
-    args = TrainingArguments(output_dir="./output", logging_dir="./log")
+    args = TrainingArguments(output_dir="./output", logging_dir="./log", report_to="none")
     trainer = Trainer(model=model, args=args, eval_dataset=dataset_inference)
 
     ix_target_features = list(
@@ -513,6 +513,7 @@ def _finetune_ttm_hf(
 
     # Use a fresh copy of the defaults to avoid cross-call mutation
     training_config_dictionary = _DEFAULT_TRAINING_ARGUMENTS.copy()
+    training_config_dictionary["report_to"] = "none"
 
     output_fewshot_dir = save_model_dir + "/fewshot/"
     logging_dir = save_model_dir + "/log/"
