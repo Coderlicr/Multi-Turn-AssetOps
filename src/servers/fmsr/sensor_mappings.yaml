@@ -580,6 +580,25 @@ chiller:
         or their motors and bearings, and therefore cannot detect a degraded motor
         or worn bearing due to normal use.
       temporal_behavior: Unknown
+  High Temperature:
+    Return Temperature:
+      answer: 'Yes'
+      reason: The sensor Chiller 3 Return Temperature can help monitor or detect the
+        failure High Temperature for Chiller 3 because it directly measures the temperature
+        of the fluid returning to the chiller, which would be elevated in the event
+        of a high-temperature failure.
+      temporal_behavior: When the failure High Temperature occurs, the sensor Chiller
+        3 Return Temperature will show an increasing trend, exceeding its normal operating
+        range, indicating the chiller's inability to effectively cool the fluid.
+    Supply Temperature:
+      answer: 'Yes'
+      reason: The sensor Chiller 3 Supply Temperature is related to the Chiller 3
+        and can monitor its temperature, which is relevant to detecting the High Temperature
+        failure.
+      temporal_behavior: When the High Temperature failure occurs in Chiller 3, the
+        sensor Chiller 3 Supply Temperature is expected to show an increasing trend,
+        exceeding its normal operating range, indicating the rise in temperature that
+        characterizes this failure.
   Purge Unit Excessive purge:
     Chiller % Loaded:
       answer: 'Yes'

@@ -1,12 +1,28 @@
 import csv
+import json
 import os
 import logging
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
+
+
+def _write_couchdb_metric(query: str, latency_s: float, status: str, docs: int = 0) -> None:
+    """Append one CouchDB query record to COUCHDB_METRICS_FILE if set."""
+    path = os.environ.get("COUCHDB_METRICS_FILE")
+    if not path:
+        return
+    try:
+        record = {"server": "iot", "query": query,
+                  "latency_s": round(latency_s, 4), "status": status, "docs_returned": docs}
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
 
 _DatetimeParam = Annotated[str, Field(description="ISO 8601 datetime string, e.g. '2020-06-01T00:00:00'.")]
 _DatetimeOpt = Annotated[Optional[str], Field(description="ISO 8601 datetime string, e.g. '2020-06-20T00:00:00'. Omit to query up to the latest data.")]
@@ -103,13 +119,16 @@ def get_asset_list() -> List[str]:
     # but for this benchmark we'll query documents and unique them.
     # In a production environment, we'd use a CouchDB view.
     try:
-        # We limit the fields to just asset_id to minimize data transfer
+        t0 = time.monotonic()
         res = db.find(
             {"asset_id": {"$exists": True}}, fields=["asset_id"], limit=100000
         )
-        assets = {doc["asset_id"] for doc in res["docs"] if "asset_id" in doc}
+        docs = res["docs"]
+        _write_couchdb_metric("get_asset_list", time.monotonic() - t0, "ok", len(docs))
+        assets = {doc["asset_id"] for doc in docs if "asset_id" in doc}
         return sorted(list(assets))
     except Exception as e:
+        _write_couchdb_metric("get_asset_list", 0, "error")
         logger.error(f"Error fetching assets: {e}")
         return []
 
@@ -120,17 +139,17 @@ def get_sensor_list(asset_id: str) -> List[str]:
         return []
 
     try:
-        # Get one document for the asset to inspect keys
+        t0 = time.monotonic()
         res = db.find({"asset_id": asset_id}, limit=1)
+        _write_couchdb_metric("get_sensor_list", time.monotonic() - t0, "ok", len(res["docs"]))
         if not res["docs"]:
             return []
-
         doc = res["docs"][0]
-        # Exclude metadata and standard fields
         exclude = {"_id", "_rev", "asset_id", "timestamp"}
         sensors = [key for key in doc.keys() if key not in exclude]
         return sorted(sensors)
     except Exception as e:
+        _write_couchdb_metric("get_sensor_list", 0, "error")
         logger.error(f"Error fetching sensors for {asset_id}: {e}")
         return []
 
@@ -201,10 +220,12 @@ def history(
 
     logger.info(f"Querying CouchDB with selector: {selector}")
     try:
+        t0 = time.monotonic()
         res = db.find(
             selector, limit=1000, sort=[{"asset_id": "asc"}, {"timestamp": "asc"}]
         )
         docs = res["docs"]
+        _write_couchdb_metric("history", time.monotonic() - t0, "ok", len(docs))
         return HistoryResult(
             site_name=site_name,
             asset_id=asset_id,
@@ -254,11 +275,14 @@ def history_csv(
         selector["timestamp"]["$lt"] = datetime.fromisoformat(final).isoformat()
 
     try:
+        t0 = time.monotonic()
         res = db.find(
             selector, limit=5000, sort=[{"asset_id": "asc"}, {"timestamp": "asc"}]
         )
         docs = res["docs"]
+        _write_couchdb_metric("history_csv", time.monotonic() - t0, "ok", len(docs))
     except Exception as e:
+        _write_couchdb_metric("history_csv", 0, "error")
         logger.error(f"CouchDB query failed: {e}")
         return ErrorResult(error=str(e))
 

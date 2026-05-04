@@ -7,11 +7,27 @@ Connection is established lazily on first use.  If CouchDB is unavailable the
 helpers return ``None`` / empty results so the server can still start.
 """
 
+import json
 import logging
 import os
+import time
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+
+def _write_couchdb_metric(query: str, latency_s: float, status: str, docs: int = 0) -> None:
+    """Append one CouchDB query record to COUCHDB_METRICS_FILE if set."""
+    path = os.environ.get("COUCHDB_METRICS_FILE")
+    if not path:
+        return
+    try:
+        record = {"server": "wo", "query": query,
+                  "latency_s": round(latency_s, 4), "status": status, "docs_returned": docs}
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
 
 import pandas as pd
 
@@ -77,11 +93,13 @@ def load(dataset: str) -> Optional[pd.DataFrame]:
     if db is None:
         return None
     try:
+        t0 = time.monotonic()
         result = db.find(
             selector={"dataset": {"$eq": dataset}},
             limit=100_000,
         )
         docs = result.get("docs", [])
+        _write_couchdb_metric(f"load_{dataset}", time.monotonic() - t0, "ok", len(docs))
         if not docs:
             logger.warning("No documents found for dataset '%s'", dataset)
             return None
