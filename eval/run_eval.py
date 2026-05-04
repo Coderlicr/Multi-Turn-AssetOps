@@ -133,11 +133,13 @@ def _wandb_init(run_id: str, system: str, dialog_ids: Optional[list[int]]) -> Op
         return None
 
 
-def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict) -> None:
+def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict, tool_metrics: dict | None = None) -> None:
     turns_ok = sum(1 for t in result.get("turns", []) if t.get("status") == "ok")
     turns_total = len(result.get("turns", []))
     wall_s = result.get("duration_seconds") or 0.0
     llm_s = llm_metrics.get("llm_latency_s", 0.0)
+    tool_s = (tool_metrics or {}).get("total_tool_latency_s", 0.0)
+    routing_s = max(wall_s - llm_s - tool_s, 0.0)
 
     wandb.log({
         # identity
@@ -148,9 +150,15 @@ def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict) -> None:
         "dialog/turns_ok": turns_ok,
         "dialog/turns_total": turns_total,
         "dialog/turn_success_rate": turns_ok / turns_total if turns_total else 0,
-        # wall-clock latency
+        # wall-clock latency breakdown (stacked: llm + tool + routing = wall)
         "latency/wall_s": wall_s,
         "latency/wall_per_turn_s": wall_s / turns_ok if turns_ok else 0,
+        "latency/llm_s": llm_s,
+        "latency/llm_fraction": llm_s / wall_s if wall_s else 0,
+        "latency/tool_s": tool_s,
+        "latency/tool_fraction": tool_s / wall_s if wall_s else 0,
+        "latency/routing_s": routing_s,
+        "latency/routing_fraction": routing_s / wall_s if wall_s else 0,
         # LLM call metrics (from LITELLM_METRICS_FILE)
         "tokens/prompt": llm_metrics.get("prompt_tokens", 0),
         "tokens/completion": llm_metrics.get("completion_tokens", 0),
@@ -160,9 +168,7 @@ def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict) -> None:
         "llm/calls_per_turn": llm_metrics.get("llm_calls", 0) / turns_ok if turns_ok else 0,
         "llm/latency_s": llm_s,
         "llm/tokens_per_second": llm_metrics.get("tokens_per_second", 0.0),
-        # derived: how much of wall time was LLM vs tool/routing overhead
         "llm/fraction_of_wall": llm_s / wall_s if wall_s else 0,
-        "llm/tool_overhead_s": max(wall_s - llm_s, 0),
     })
 
 
@@ -656,16 +662,18 @@ async def run_all(
         all_llm_metrics.append(llm_metrics)
 
         if wandb and llm_metrics:
-            _wandb_log_dialog(wandb, result, llm_metrics)
+            dialog_id = result["dialog_id"]
+            tool_metrics_path = output_dir / f"dialog_{dialog_id:02d}_tool_metrics.jsonl"
+            tool_metrics = _read_tool_metrics(tool_metrics_path)
+            _wandb_log_dialog(wandb, result, llm_metrics, tool_metrics)
             _wandb_log_turns(wandb, result, turn_offset)
-            dialog_metrics_path = output_dir / f"dialog_{result['dialog_id']:02d}_llm_metrics.jsonl"
+            dialog_metrics_path = output_dir / f"dialog_{dialog_id:02d}_llm_metrics.jsonl"
             raw_calls = _read_llm_calls(dialog_metrics_path)
-            _wandb_log_llm_calls(wandb, raw_calls, call_offset, result["dialog_id"])
+            _wandb_log_llm_calls(wandb, raw_calls, call_offset, dialog_id)
             call_offset += len(raw_calls)
-            tool_metrics_path = output_dir / f"dialog_{result['dialog_id']:02d}_tool_metrics.jsonl"
-            _wandb_log_tool_metrics(wandb, _read_tool_metrics(tool_metrics_path), result["dialog_id"])
-            couchdb_metrics_path = output_dir / f"dialog_{result['dialog_id']:02d}_couchdb_metrics.jsonl"
-            _wandb_log_couchdb_metrics(wandb, _read_couchdb_metrics(couchdb_metrics_path), result["dialog_id"])
+            _wandb_log_tool_metrics(wandb, tool_metrics, dialog_id)
+            couchdb_metrics_path = output_dir / f"dialog_{dialog_id:02d}_couchdb_metrics.jsonl"
+            _wandb_log_couchdb_metrics(wandb, _read_couchdb_metrics(couchdb_metrics_path), dialog_id)
         turn_offset += len(result.get("turns", []))
 
     # ── summary ───────────────────────────────────────────────────────────────
