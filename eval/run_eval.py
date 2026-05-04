@@ -116,8 +116,16 @@ def _wandb_init(run_id: str, system: str, dialog_ids: Optional[list[int]]) -> Op
         )
         wandb.define_metric("dialog/id")
         wandb.define_metric("dialog/*", step_metric="dialog/id")
+        wandb.define_metric("latency/*", step_metric="dialog/id")
+        wandb.define_metric("tokens/*",  step_metric="dialog/id")
+        wandb.define_metric("llm/*",     step_metric="dialog/id")
+        wandb.define_metric("tool/*",    step_metric="dialog/id")
+        wandb.define_metric("couchdb/*", step_metric="dialog/id")
+        wandb.define_metric("run/*",     step_metric="dialog/id")
         wandb.define_metric("turn/index")
         wandb.define_metric("turn/*", step_metric="turn/index")
+        wandb.define_metric("llm_call/index")
+        wandb.define_metric("llm_call/*", step_metric="llm_call/index")
         print(f"WandB run: {run.url}")
         return wandb
     except ImportError:
@@ -226,6 +234,120 @@ def _read_llm_metrics(path: pathlib.Path) -> dict:
     }
 
 
+def _read_llm_calls(path: pathlib.Path) -> list:
+    """Return raw per-call records from the LLM metrics JSONL file."""
+    if not path.exists():
+        return []
+    calls = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                calls.append(json.loads(line))
+    except Exception:
+        pass
+    return calls
+
+
+def _wandb_log_llm_calls(wandb, calls: list, call_offset: int, dialog_id: int) -> None:
+    """Log one WandB point per LLM call with a globally unique llm_call/index."""
+    for i, call in enumerate(calls):
+        latency = call.get("latency_s", 0.0)
+        completion = call.get("completion_tokens", 0)
+        wandb.log({
+            "llm_call/index":            call_offset + i + 1,
+            "llm_call/dialog_id":        dialog_id,
+            "llm_call/prompt_tokens":    call.get("prompt_tokens", 0),
+            "llm_call/completion_tokens": completion,
+            "llm_call/total_tokens":     call.get("total_tokens", 0),
+            "llm_call/latency_s":        latency,
+            "llm_call/tokens_per_second": call.get("tokens_per_second",
+                round(completion / latency, 2) if latency > 0 else 0),
+            "llm_call/model":            call.get("model", ""),
+        })
+
+
+def _read_tool_metrics(path: pathlib.Path) -> dict:
+    """Aggregate tool-call records from TOOL_METRICS_FILE by server."""
+    if not path.exists():
+        return {}
+    by_server: dict = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            srv = rec.get("server", "unknown")
+            s = by_server.setdefault(srv, {"calls": 0, "latency_s": 0.0, "errors": 0})
+            s["calls"] += 1
+            s["latency_s"] = round(s["latency_s"] + rec.get("latency_s", 0.0), 4)
+            if rec.get("status") != "ok":
+                s["errors"] += 1
+    except Exception:
+        pass
+    total_calls = sum(s["calls"] for s in by_server.values())
+    total_latency = round(sum(s["latency_s"] for s in by_server.values()), 4)
+    return {"by_server": by_server, "total_calls": total_calls, "total_latency_s": total_latency}
+
+
+def _wandb_log_tool_metrics(wandb, tool_metrics: dict, dialog_id: int) -> None:
+    if not tool_metrics:
+        return
+    payload = {
+        "dialog/id": dialog_id,
+        "tool/total_calls":   tool_metrics.get("total_calls", 0),
+        "tool/total_latency_s": tool_metrics.get("total_latency_s", 0.0),
+    }
+    for server, stats in tool_metrics.get("by_server", {}).items():
+        payload[f"tool/{server}/calls"]     = stats["calls"]
+        payload[f"tool/{server}/latency_s"] = stats["latency_s"]
+        payload[f"tool/{server}/errors"]    = stats["errors"]
+    wandb.log(payload)
+
+
+def _read_couchdb_metrics(path: pathlib.Path) -> dict:
+    """Aggregate CouchDB query records from COUCHDB_METRICS_FILE by server."""
+    if not path.exists():
+        return {}
+    by_server: dict = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            srv = rec.get("server", "unknown")
+            s = by_server.setdefault(srv, {"queries": 0, "latency_s": 0.0,
+                                           "docs_returned": 0, "errors": 0})
+            s["queries"] += 1
+            s["latency_s"] = round(s["latency_s"] + rec.get("latency_s", 0.0), 4)
+            s["docs_returned"] += rec.get("docs_returned", 0)
+            if rec.get("status") != "ok":
+                s["errors"] += 1
+    except Exception:
+        pass
+    total_queries = sum(s["queries"] for s in by_server.values())
+    total_latency = round(sum(s["latency_s"] for s in by_server.values()), 4)
+    return {"by_server": by_server, "total_queries": total_queries, "total_latency_s": total_latency}
+
+
+def _wandb_log_couchdb_metrics(wandb, couchdb_metrics: dict, dialog_id: int) -> None:
+    if not couchdb_metrics:
+        return
+    payload = {
+        "dialog/id": dialog_id,
+        "couchdb/total_queries":   couchdb_metrics.get("total_queries", 0),
+        "couchdb/total_latency_s": couchdb_metrics.get("total_latency_s", 0.0),
+    }
+    for server, stats in couchdb_metrics.get("by_server", {}).items():
+        payload[f"couchdb/{server}/queries"]       = stats["queries"]
+        payload[f"couchdb/{server}/latency_s"]     = stats["latency_s"]
+        payload[f"couchdb/{server}/docs_returned"] = stats["docs_returned"]
+        payload[f"couchdb/{server}/errors"]        = stats["errors"]
+    wandb.log(payload)
+
+
 # ── child process environment helpers ─────────────────────────────────────────
 
 def _make_child_env(metrics_path: pathlib.Path) -> dict[str, str]:
@@ -254,6 +376,8 @@ def _make_child_env(metrics_path: pathlib.Path) -> dict[str, str]:
         child_env[key] = ""
 
     child_env["LITELLM_METRICS_FILE"] = str(metrics_path)
+    child_env["TOOL_METRICS_FILE"] = str(metrics_path).replace("llm_metrics", "tool_metrics")
+    child_env["COUCHDB_METRICS_FILE"] = str(metrics_path).replace("llm_metrics", "couchdb_metrics")
     child_env["WANDB_DISABLED"] = "true"
     child_env["WANDB_SILENT"] = "true"
     child_env["WANDB_CONSOLE"] = "off"
@@ -504,7 +628,8 @@ async def run_all(
     all_results: list[dict] = []
     all_llm_metrics: list[dict] = []
     overall_start = time.monotonic()
-    turn_offset = 0  # globally unique turn counter across all dialogs
+    turn_offset = 0   # globally unique turn counter across all dialogs
+    call_offset = 0   # globally unique LLM call counter across all dialogs
 
     for scenario in scenarios:
         try:
@@ -528,10 +653,20 @@ async def run_all(
         all_results.append(result)
         all_llm_metrics.append(llm_metrics)
 
+        dialog_id = result["dialog_id"]
+        metrics_path = output_dir / f"dialog_{dialog_id:02d}_llm_metrics.jsonl"
+        llm_calls = _read_llm_calls(metrics_path)
+        tool_metrics_path = output_dir / f"dialog_{dialog_id:02d}_tool_metrics.jsonl"
+        couchdb_metrics_path = output_dir / f"dialog_{dialog_id:02d}_couchdb_metrics.jsonl"
+
         if wandb and llm_metrics:
             _wandb_log_dialog(wandb, result, llm_metrics)
             _wandb_log_turns(wandb, result, turn_offset)
+            _wandb_log_llm_calls(wandb, llm_calls, call_offset, dialog_id)
+            _wandb_log_tool_metrics(wandb, _read_tool_metrics(tool_metrics_path), dialog_id)
+            _wandb_log_couchdb_metrics(wandb, _read_couchdb_metrics(couchdb_metrics_path), dialog_id)
         turn_offset += len(result.get("turns", []))
+        call_offset += len(llm_calls)
 
     # ── summary ───────────────────────────────────────────────────────────────
     counts = {s: sum(1 for r in all_results if r["status"] == s)
