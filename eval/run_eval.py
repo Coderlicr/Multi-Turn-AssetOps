@@ -136,11 +136,13 @@ def _wandb_init(run_id: str, system: str, dialog_ids: Optional[list[int]]) -> Op
         return None
 
 
-def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict) -> None:
+def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict, tool_metrics: dict | None = None) -> None:
     turns_ok = sum(1 for t in result.get("turns", []) if t.get("status") == "ok")
     turns_total = len(result.get("turns", []))
     wall_s = result.get("duration_seconds") or 0.0
     llm_s = llm_metrics.get("llm_latency_s", 0.0)
+    tool_s = (tool_metrics or {}).get("total_latency_s", 0.0)
+    routing_s = max(wall_s - llm_s - tool_s, 0.0)
 
     wandb.log({
         # identity
@@ -162,9 +164,13 @@ def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict) -> None:
         "llm/calls": llm_metrics.get("llm_calls", 0),
         "llm/calls_per_turn": llm_metrics.get("llm_calls", 0) / turns_ok if turns_ok else 0,
         "llm/latency_s": llm_s,
-        # derived: how much of wall time was LLM vs tool/routing overhead
-        "llm/fraction_of_wall": llm_s / wall_s if wall_s else 0,
-        "llm/tool_overhead_s": max(wall_s - llm_s, 0),
+        # 3-way latency breakdown: llm / tool / routing
+        "latency/llm_s": llm_s,
+        "latency/llm_fraction": llm_s / wall_s if wall_s else 0,
+        "latency/tool_s": tool_s,
+        "latency/tool_fraction": tool_s / wall_s if wall_s else 0,
+        "latency/routing_s": routing_s,
+        "latency/routing_fraction": routing_s / wall_s if wall_s else 0,
     })
 
 
@@ -660,10 +666,11 @@ async def run_all(
         couchdb_metrics_path = output_dir / f"dialog_{dialog_id:02d}_couchdb_metrics.jsonl"
 
         if wandb and llm_metrics:
-            _wandb_log_dialog(wandb, result, llm_metrics)
+            tool_metrics = _read_tool_metrics(tool_metrics_path)
+            _wandb_log_dialog(wandb, result, llm_metrics, tool_metrics)
             _wandb_log_turns(wandb, result, turn_offset)
             _wandb_log_llm_calls(wandb, llm_calls, call_offset, dialog_id)
-            _wandb_log_tool_metrics(wandb, _read_tool_metrics(tool_metrics_path), dialog_id)
+            _wandb_log_tool_metrics(wandb, tool_metrics, dialog_id)
             _wandb_log_couchdb_metrics(wandb, _read_couchdb_metrics(couchdb_metrics_path), dialog_id)
         turn_offset += len(result.get("turns", []))
         call_offset += len(llm_calls)
