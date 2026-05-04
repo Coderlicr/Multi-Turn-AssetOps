@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -31,13 +33,23 @@ _TOOL_CALL_TIMEOUT = 300  # seconds
 
 
 def _make_stdio_params(server: Path | str):
+    """Build StdioServerParameters, passing the full current env explicitly.
+
+    The MCP library default (get_default_environment) only forwards HOME/PATH/SHELL
+    and silently drops custom vars like COUCHDB_METRICS_FILE and WANDB_DISABLED.
+    Passing env=dict(os.environ) ensures MCP server subprocesses inherit all
+    profiling vars set by the eval harness.
+    """
     from mcp import StdioServerParameters
+
+    inherited_env = dict(os.environ)
 
     if isinstance(server, str):
         return StdioServerParameters(
             command="uv",
             args=["run", server],
             cwd=str(_REPO_ROOT),
+            env=inherited_env,
         )
     try:
         rel = server.relative_to(_REPO_ROOT)
@@ -46,9 +58,28 @@ def _make_stdio_params(server: Path | str):
             command="python",
             args=["-m", module],
             cwd=str(_REPO_ROOT),
+            env=inherited_env,
         )
     except ValueError:
-        return StdioServerParameters(command="python", args=[str(server)])
+        return StdioServerParameters(
+            command="python",
+            args=[str(server)],
+            env=inherited_env,
+        )
+
+
+def _write_tool_metric(server: str, tool: str, latency_s: float, status: str) -> None:
+    """Append one tool-call record to TOOL_METRICS_FILE if set."""
+    path = os.environ.get("TOOL_METRICS_FILE")
+    if not path:
+        return
+    try:
+        record = {"server": server, "tool": tool,
+                  "latency_s": round(latency_s, 4), "status": status}
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
 
 
 async def _list_tools_from_server(server_path: Path | str) -> list[dict]:
@@ -79,6 +110,8 @@ async def _call_tool_on_server(
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client
 
+    server_name = str(server_path).split("/")[-1].replace("-mcp-server", "")
+
     async def _inner() -> str:
         params = _make_stdio_params(server_path)
         async with stdio_client(params) as (read, write):
@@ -89,7 +122,16 @@ async def _call_tool_on_server(
                     getattr(item, "text", str(item)) for item in result.content
                 )
 
-    return await asyncio.wait_for(_inner(), timeout=_TOOL_CALL_TIMEOUT)
+    t0 = time.monotonic()
+    status = "ok"
+    try:
+        result = await asyncio.wait_for(_inner(), timeout=_TOOL_CALL_TIMEOUT)
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        _write_tool_metric(server_name, tool_name, time.monotonic() - t0, status)
+    return result
 
 
 class MCPToolClient:
