@@ -16,21 +16,6 @@ All three branches share `eval/run_eval.py` and the same MCP server instrumentat
 
 ---
 
-## Root cause fixed: MCP subprocess environment inheritance
-
-The MCP library's `stdio_client` calls `get_default_environment()` when no `env` argument is provided. This only forwards six shell variables (`HOME`, `PATH`, `SHELL`, `TMPDIR`, `USER`, `LOGNAME`) and silently drops all custom variables.
-
-**Consequence before the fix:**
-- `COUCHDB_METRICS_FILE` never reached MCP servers → CouchDB metrics were missing entirely.
-- `WANDB_DISABLED` was not forwarded → MCP servers attempted to initialise WandB, printing banners that corrupted the stdio transport and broke tool calls.
-
-**Fix** — `env=dict(os.environ)` added to every `StdioServerParameters` construction:
-
-- `src/agent/plan_execute/executor.py` (`base_multi_turn_advanced_profiling`)
-- `src/agent/supervisor_specialist/runtime/mcp_tools.py` (`supervisor-specialist`, `supervisor-specialist-advanced`)
-
----
-
 ## Instrumentation layers
 
 ### Layer 1 — LLM call metrics (`LITELLM_METRICS_FILE`)
@@ -285,3 +270,18 @@ Profiling credentials (`WANDB_API_KEY`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT`
 | `src/servers/wo/data.py` | `_write_couchdb_metric()` wrapping all `db.find()` calls |
 | `src/servers/vibration/couchdb_client.py` | `_write_couchdb_metric()` wrapping all `db.find()` calls |
 | `.gitignore` | Added `eval/results/` and `tuned_models/` |
+
+---
+
+## Root cause fixed: MCP subprocess environment inheritance
+
+The MCP library's `stdio_client` calls `get_default_environment()` when no `env` argument is provided. This only forwards six shell variables (`HOME`, `PATH`, `SHELL`, `TMPDIR`, `USER`, `LOGNAME`) and silently drops all custom variables.
+
+**Consequence before the fix:**
+- `COUCHDB_METRICS_FILE` never reached MCP servers → CouchDB metrics were missing entirely.
+- `WANDB_DISABLED` was not forwarded → MCP servers attempted to initialise WandB, printing banners that corrupted the stdio transport and broke tool calls.
+
+**Fix** — `env=dict(os.environ)` added to every `StdioServerParameters` construction:
+
+- `src/agent/plan_execute/executor.py` (`base_multi_turn_advanced_profiling`)
+- `src/agent/supervisor_specialist/runtime/mcp_tools.py` (`supervisor-specialist`, `supervisor-specialist-advanced`)
