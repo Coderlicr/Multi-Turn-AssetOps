@@ -101,6 +101,12 @@ These are the primary comparison metrics across branches.
 
 The three fractions (`llm_fraction + tool_fraction + routing_fraction`) sum to approximately 1. Comparing these across branches reveals where each architecture spends its time — for example, whether the parallel tool calling in `supervisor-specialist-advanced` reduces `latency/tool_fraction` relative to the sequential branches.
 
+> **Note on `routing_s`:** Despite the name, this metric does not exclusively capture supervisor routing time — it is the same residual formula (`wall - llm - tool`) on all three branches and captures different things per architecture:
+> - **Plan-execute:** prompt assembly, JSON parsing, step scheduling, asyncio overhead.
+> - **SS / SSA:** LangGraph graph transitions, supervisor decision parsing, artifact store I/O, conversation memory serialisation, asyncio overhead — plus the same prompt assembly and JSON parsing as plan-execute.
+>
+> The supervisor routing decision itself (the LLM call where the supervisor decides which specialist to invoke) is counted inside `latency/llm_s`, not `routing_s`, since it is an LLM API call like any other. `routing_s` is better understood as **unaccounted overhead**.
+
 ---
 
 ### `tokens/*` — token usage (per dialog)
