@@ -44,6 +44,7 @@ class ArtifactEnvelope(BaseModel):
     source_artifacts: list[str]
     payload: dict[str, Any]
     open_questions: list[str] = Field(default_factory=list)
+    summary: str = ""
 
 
 class CaseState(BaseModel):
@@ -155,6 +156,7 @@ class ArtifactDraft(BaseModel):
     source_artifacts: list[str] = Field(default_factory=list)
     payload: dict[str, Any]
     open_questions: list[str] = Field(default_factory=list)
+    summary: str = ""
 
 
 class SpecialistFinal(BaseModel):

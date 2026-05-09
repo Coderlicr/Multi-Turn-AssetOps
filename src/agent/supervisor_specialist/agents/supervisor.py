@@ -64,6 +64,7 @@ Decision rules:
 - Go to respond_to_user when the user's goal is answered or when step_count >= {steps_before_respond}
 - Do NOT call the same specialist for the exact same purpose twice
 - When calling a specialist, include all relevant artifact IDs in input_artifacts
+- If the user does not name a specific asset, write the goal to explicitly cover ALL assets at the site (e.g. "all chillers at site MAIN") and leave asset_ids as [] so the specialist discovers them via iot.assets
 
 Time window rules (CRITICAL):
 - The case_state.time_window already contains concrete ISO 8601 start/end strings — copy them exactly into next_task.time_window
@@ -352,11 +353,10 @@ class SupervisorAgent:
             return "(none — no artifacts collected yet)"
         lines = []
         for a in artifacts:
-            payload_preview = json.dumps(a.payload, ensure_ascii=False)[:300]
-            if len(json.dumps(a.payload, ensure_ascii=False)) > 300:
-                payload_preview += "..."
+            summary = getattr(a, "summary", "") or ""
+            summary_line = summary if summary else "(no summary)"
             lines.append(
                 f"  [{a.artifact_id}] type={a.artifact_type} producer={a.producer} "
-                f"assets={a.asset_ids}\n    preview: {payload_preview}"
+                f"assets={a.asset_ids}\n    summary: {summary_line}"
             )
         return "\n".join(lines)

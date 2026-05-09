@@ -7,14 +7,31 @@ credentials are shared: COUCHDB_URL, COUCHDB_USERNAME, COUCHDB_PASSWORD.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Optional
 
 import couchdb3
 import numpy as np
 from dotenv import load_dotenv
+
+
+def _write_couchdb_metric(query: str, latency_s: float, status: str, docs: int = 0) -> None:
+    """Append one CouchDB query record to COUCHDB_METRICS_FILE if set."""
+    path = os.environ.get("COUCHDB_METRICS_FILE")
+    if not path:
+        return
+    try:
+        record = {"server": "vibration", "query": query,
+                  "latency_s": round(latency_s, 4), "status": status, "docs_returned": docs}
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
+
 
 load_dotenv()
 logger = logging.getLogger("vibration-mcp-server")
@@ -83,12 +100,15 @@ def fetch_vibration_timeseries(
         if final:
             selector["timestamp"]["$lt"] = datetime.fromisoformat(final).isoformat()
 
+        t0 = time.monotonic()
         res = db.find(
             selector,
             limit=limit,
             sort=[{"asset_id": "asc"}, {"timestamp": "asc"}],
         )
+        _write_couchdb_metric("fetch_timeseries", time.monotonic() - t0, "ok", len(res.get("docs", [])))
     except Exception as e:
+        _write_couchdb_metric("fetch_timeseries", 0, "error")
         logger.error(f"CouchDB query failed: {e}")
         return None
 
@@ -134,12 +154,15 @@ def list_sensor_fields(asset_id: str) -> list[str]:
     if not db:
         return []
     try:
+        t0 = time.monotonic()
         res = db.find({"asset_id": asset_id}, limit=1)
+        _write_couchdb_metric("list_sensor_fields", time.monotonic() - t0, "ok", len(res["docs"]))
         if not res["docs"]:
             return []
         doc = res["docs"][0]
         exclude = {"_id", "_rev", "asset_id", "timestamp"}
         return sorted(k for k in doc.keys() if k not in exclude)
     except Exception as e:
+        _write_couchdb_metric("list_sensor_fields", 0, "error")
         logger.error(f"Error listing sensors for {asset_id}: {e}")
         return []

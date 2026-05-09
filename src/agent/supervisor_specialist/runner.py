@@ -90,6 +90,7 @@ class SupervisorSpecialistRunner:
         artifact_store = ArtifactStore()
         event_stream = EventStream(quiet=quiet)
         behavior_log = BehaviorLog(log_dir=log_dir)
+        self._behavior_log = behavior_log
         mcp_tools = mcp_tools or MCPToolClient(server_paths=server_paths or DEFAULT_SERVER_PATHS)
 
         supervisor = SupervisorAgent(
@@ -126,6 +127,16 @@ class SupervisorSpecialistRunner:
 
     async def run(self, question: str) -> str:
         case_state = self._init_case_state(question)
+        self._behavior_log.write(
+            case_id=case_state.case_id,
+            agent_role="user",
+            task_type="user_question",
+            input_artifact_ids=[],
+            tool_calls=[],
+            output_artifact_ids=[],
+            status="ok",
+            user_message=question,
+        )
         initial_state = self._initial_state(question, case_state)
         config = {"configurable": {"thread_id": case_state.case_id}}
         result = await self._graph.ainvoke(initial_state, config=config)
@@ -135,14 +146,26 @@ class SupervisorSpecialistRunner:
         """Run one turn in the runner's in-memory multi-turn dialog session."""
         config = {"configurable": {"thread_id": self._dialog_thread_id}}
         if self._dialog_started:
+            case_id = self._last_dialog_state["case_state"].case_id
             input_state: GraphState = {
                 "current_user_message": question,
                 "max_steps": self._max_steps,
             }
         else:
             case_state = self._init_case_state(question)
+            case_id = case_state.case_id
             input_state = self._initial_state(question, case_state)
 
+        self._behavior_log.write(
+            case_id=case_id,
+            agent_role="user",
+            task_type="user_question",
+            input_artifact_ids=[],
+            tool_calls=[],
+            output_artifact_ids=[],
+            status="ok",
+            user_message=question,
+        )
         result = await self._graph.ainvoke(input_state, config=config)
         self._dialog_started = True
         self._last_dialog_state = result
