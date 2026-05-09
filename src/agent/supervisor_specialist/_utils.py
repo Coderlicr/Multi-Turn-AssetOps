@@ -170,12 +170,19 @@ def format_tool_results_for_prompt(tool_results: list) -> str:
         return "(no tool calls made)"
     lines = []
     for r in tool_results:
+        batch_suffix = ""
+        parallel_group_id = getattr(r, "parallel_group_id", None)
+        if parallel_group_id is not None:
+            batch_suffix = (
+                f" [parallel_group={parallel_group_id} "
+                f"{getattr(r, 'parallel_index', None)}/{getattr(r, 'parallel_size', None)}]"
+            )
         if r.status == "ok":
             result_str = str(r.result or "")
             result_preview = result_str[:2000]
             if len(result_str) > 2000:
                 result_preview += "... [truncated]"
-            lines.append(f"[{r.order}] {r.tool_name} -> OK\n{result_preview}")
+            lines.append(f"[{r.order}]{batch_suffix} {r.tool_name} -> OK\n{result_preview}")
         else:
-            lines.append(f"[{r.order}] {r.tool_name} -> FAILED: {r.error}")
+            lines.append(f"[{r.order}]{batch_suffix} {r.tool_name} -> FAILED: {r.error}")
     return "\n\n".join(lines)

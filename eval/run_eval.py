@@ -164,6 +164,8 @@ def _wandb_log_dialog(wandb, result: dict, llm_metrics: dict, tool_metrics: dict
         "llm/calls": llm_metrics.get("llm_calls", 0),
         "llm/calls_per_turn": llm_metrics.get("llm_calls", 0) / turns_ok if turns_ok else 0,
         "llm/latency_s": llm_s,
+        "llm/tokens_per_second": llm_metrics.get("tokens_per_second", 0.0),
+        "llm/fraction_of_wall": llm_s / wall_s if wall_s else 0,
         # 3-way latency breakdown: llm / tool / routing
         "latency/llm_s": llm_s,
         "latency/llm_fraction": llm_s / wall_s if wall_s else 0,

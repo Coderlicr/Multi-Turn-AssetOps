@@ -214,3 +214,25 @@ class MCPToolClient:
         for call in calls:
             results.append(await self.call(call.tool_name, call.args))
         return results
+
+    async def call_many_parallel(
+        self,
+        calls: list[ToolCallRequest],
+        *,
+        max_concurrency: int = 4,
+    ) -> list[MCPToolResult]:
+        """Execute independent tool calls concurrently while preserving result order."""
+        if not calls:
+            return []
+
+        concurrency = max(1, max_concurrency)
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def _call_one(call: ToolCallRequest) -> MCPToolResult:
+            async with semaphore:
+                try:
+                    return await self.call(call.tool_name, call.args)
+                except Exception as exc:  # noqa: BLE001
+                    return MCPToolResult(status="failed", error=str(exc) or repr(exc))
+
+        return await asyncio.gather(*(_call_one(call) for call in calls))

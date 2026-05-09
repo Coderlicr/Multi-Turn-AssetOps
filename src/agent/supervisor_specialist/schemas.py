@@ -78,6 +78,9 @@ class ToolCallSummary(BaseModel):
     result_preview: str | None = None
     error: str | None = None
     file_paths: list[str] = Field(default_factory=list)
+    parallel_group_id: str | None = None
+    parallel_index: int | None = None
+    parallel_size: int | None = None
 
 
 class DialogTurnRecord(BaseModel):
@@ -129,6 +132,16 @@ class ToolCallRequest(BaseModel):
     args: dict[str, Any] = Field(default_factory=dict)
 
 
+class SpecialistStepDecision(BaseModel):
+    """One ReAct step decision from a specialist LLM."""
+
+    done: bool = False
+    tool_name: str | None = None
+    args: dict[str, Any] = Field(default_factory=dict)
+    tool_calls: list[ToolCallRequest] = Field(default_factory=list)
+    rationale: str | None = None
+
+
 class ToolPlan(BaseModel):
     tool_calls: list[ToolCallRequest] = Field(default_factory=list)
 
@@ -140,6 +153,9 @@ class ToolCallResult(BaseModel):
     status: Literal["ok", "failed"]
     result: Any | None = None
     error: str | None = None
+    parallel_group_id: str | None = None
+    parallel_index: int | None = None
+    parallel_size: int | None = None
 
 
 class ArtifactDraft(BaseModel):
@@ -203,3 +219,6 @@ class ToolCallLog(BaseModel):
     status: str
     result: Any | None = None
     error: str | None = None
+    parallel_group_id: str | None = None
+    parallel_index: int | None = None
+    parallel_size: int | None = None
