@@ -2,7 +2,8 @@
 
 > **Course:** High Performance Machine Learning  
 > **Semester:** Spring 2026  
-> **Instructor:** Dr. Kaoutar El Maghraoui
+> **Instructor:** Dr. Kaoutar El Maghraoui  
+> **Project Mentor:** Dr. Dhaval Patel
 
 ---
 
@@ -18,9 +19,11 @@
 
 ## Submission
 
-- **GitHub repository:** [https://github.com/Coderlicr/Multi-Turn-AssetOps](https://github.com/Coderlicr/Multi-Turn-AssetOps)
-- **Final report:** `deliverables/HPML_Final_Report.pdf`
-- **Final presentation:** `deliverables/HPML_Final_Presentation.pdf`
+- **GitHub repository:** 
+  - Main System & Profiling: [https://github.com/Coderlicr/Multi-Turn-AssetOps](https://github.com/Coderlicr/Multi-Turn-AssetOps) (this repository)
+  - Evaluation: [https://github.com/Rui2026/Multi-Turn-AssetOps-Evaluation](https://github.com/Rui2026/Multi-Turn-AssetOps-Evaluation)
+- **Final report:** [`deliverables/HPML_Final_Report_Team5.pdf`](deliverables/HPML_Final_Report_Team5.pdf)
+- **Final presentation:** [`deliverables/HPML_Final_Presentation_Team5.pdf`](deliverables/HPML_Final_Presentation_Team5.pdf)
 - **Experiment tracking:** [link to public Wandb dashboard](https://wandb.ai/rl3641-col/multi-turn-assetops?nw=lk02esfc7g)
 
 ---
@@ -264,12 +267,6 @@ uv run python eval/run_eval.py --system supervisor-specialist
 
 The evaluation harness logs per-dialog latency, token usage, LLM calls, tool calls, CouchDB query metrics, per-turn success, and run-level summaries.
 
-### G. Tests
-
-```bash
-uv run python -m pytest src/agent/supervisor_specialist -q
-```
-
 ---
 
 ## 6. Results and Observations
@@ -305,6 +302,12 @@ Representative per-server tool latency:
 
 ---
 
+## ACKNOWLEDGMENT
+
+We thank Dr. Dhaval Patel and Dr. Kaoutar El Maghraoui from IBM Research for their guidance and mentorship throughout this project.
+
+---
+
 ## AI Use Disclosure
 
 **Did your team use any AI tool in completing this project?**
@@ -332,7 +335,7 @@ By submitting this project, the team confirms that the analysis, interpretations
 
 ## License
 
-Released under the MIT License. See [`LICENSE`](LICENSE).
+Released under the Apache-2.0 License. See [`LICENSE`](LICENSE).
 
 ## Citation
 
