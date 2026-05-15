@@ -13,18 +13,25 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
-_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+_FALLBACK_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 _AUTO_SAVE_OUTPUT = "__AUTO_SAVE_OUTPUT__"
+_AUTO_SAVE_BEHAVIOR_LOG = "__AUTO_SAVE_BEHAVIOR_LOG__"
 
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE_FORMAT = "%H:%M:%S"
 
 
+def _default_model() -> str:
+    return os.environ.get("DEFAULT_MODEL_ID") or _FALLBACK_MODEL
+
+
 def _build_parser() -> argparse.ArgumentParser:
+    default_model = _default_model()
     parser = argparse.ArgumentParser(
         prog="plan-execute",
         description="Run a question through the MCP plan-execute workflow.",
@@ -56,9 +63,9 @@ examples:
     parser.add_argument("question", nargs="?", help="The question to answer.")
     parser.add_argument(
         "--model-id",
-        default=_DEFAULT_MODEL,
+        default=default_model,
         metavar="MODEL_ID",
-        help=f"litellm model string with provider prefix (default: {_DEFAULT_MODEL}).",
+        help=f"litellm model string with provider prefix (default: {default_model}).",
     )
     parser.add_argument(
         "--server",
@@ -99,6 +106,15 @@ examples:
         help="Enter a simple REPL and retain minimal session state across turns.",
     )
     parser.add_argument(
+        "--reference-date",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help=(
+            "Anchor date for relative date/time argument resolution "
+            "(default: today's local date). E.g. 2020-06-20"
+        ),
+    )
+    parser.add_argument(
         "--save-output",
         nargs="?",
         const=_AUTO_SAVE_OUTPUT,
@@ -107,6 +123,21 @@ examples:
             "Persist results to a file as JSONL, one JSON object per line. "
             "If PATH is omitted, defaults to logs/log_<timestamp>.jsonl."
         ),
+    )
+    parser.add_argument(
+        "--save-behavior-log",
+        nargs="?",
+        const=_AUTO_SAVE_BEHAVIOR_LOG,
+        metavar="DIR",
+        help=(
+            "Persist Supervisor-Specialist-style behavior events as JSONL "
+            "(default: logs/plan_execute). Optionally pass a custom DIR."
+        ),
+    )
+    parser.add_argument(
+        "--no-behavior-log",
+        action="store_true",
+        help="Disable the default Supervisor-Specialist-style behavior JSONL log.",
     )
     return parser
 
@@ -164,7 +195,13 @@ async def _run(args: argparse.Namespace) -> None:
 
     llm = _build_llm(args.model_id)
     server_paths = _parse_servers(args.servers)
-    runner = PlanExecuteRunner(llm=llm, server_paths=server_paths)
+    behavior_log_dir = _prepare_behavior_log_dir(args)
+    runner = PlanExecuteRunner(
+        llm=llm,
+        server_paths=server_paths,
+        log_dir=behavior_log_dir,
+        reference_date=args.reference_date,
+    )
     session = SessionState()
     args.save_output_path = _prepare_output_path(args)
 
@@ -291,6 +328,14 @@ def _prepare_output_path(args: argparse.Namespace) -> Path | None:
     if not args.save_output:
         return None
     return _resolve_output_path(args.save_output, multi_turn=args.multi_turn)
+
+
+def _prepare_behavior_log_dir(args: argparse.Namespace) -> Path | None:
+    if args.no_behavior_log:
+        return None
+    if not args.save_behavior_log or args.save_behavior_log == _AUTO_SAVE_BEHAVIOR_LOG:
+        return Path("logs") / "plan_execute"
+    return Path(args.save_behavior_log)
 
 
 def main() -> None:

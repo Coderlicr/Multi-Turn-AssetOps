@@ -14,10 +14,15 @@ import asyncio
 import os
 import sys
 
-_DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+_FALLBACK_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
+
+
+def _default_model() -> str:
+    return os.environ.get("DEFAULT_MODEL_ID") or _FALLBACK_MODEL
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    default_model = _default_model()
     p = argparse.ArgumentParser(
         prog="supervisor-specialist",
         description="Multi-agent industrial asset operations system (Supervisor-Specialist).",
@@ -25,7 +30,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("question", nargs="?", help="The user question to answer.")
     p.add_argument(
         "--model-id",
-        default=os.environ.get("SS_MODEL_ID", _DEFAULT_MODEL),
+        default=default_model,
         help="LiteLLM model ID (default: %(default)s)",
     )
     p.add_argument(
@@ -103,6 +108,8 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    from dotenv import load_dotenv
+    load_dotenv()
     parser = _build_parser()
     args = parser.parse_args()
     if not args.question and not args.multi_turn:

@@ -13,10 +13,13 @@ an MCP-native implementation:
 from __future__ import annotations
 
 import logging
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from llm import LLMBackend
 
+from .behavior_log import PlanExecuteBehaviorLog, plan_to_dict
 from .executor import Executor
 from .planner import Planner
 from ..models import OrchestratorResult
@@ -79,10 +82,26 @@ class PlanExecuteRunner(AgentRunner):
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        behavior_log: PlanExecuteBehaviorLog | None = None,
+        log_dir: Path | None = None,
+        reference_date: str | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
+        if behavior_log is not None and log_dir is not None:
+            raise ValueError("Pass either behavior_log or log_dir, not both.")
+        self._reference_date = self._resolve_reference_date(reference_date)
+        self._behavior_log = behavior_log or (
+            PlanExecuteBehaviorLog(log_dir=log_dir) if log_dir is not None else None
+        )
+        self._dialog_case_id = self._make_case_id()
+        self._turn_index = 0
         self._planner = Planner(llm)
-        self._executor = Executor(llm, server_paths)
+        self._executor = Executor(
+            llm,
+            server_paths,
+            behavior_log=self._behavior_log,
+            reference_date=self._reference_date,
+        )
 
     async def run(
         self,
@@ -108,6 +127,25 @@ class PlanExecuteRunner(AgentRunner):
         effective_question = (
             session.build_question(question) if session is not None else question
         )
+        if session is None:
+            case_id = self._make_case_id()
+            turn_index = 1
+        else:
+            case_id = self._dialog_case_id
+            self._turn_index += 1
+            turn_index = self._turn_index
+        turn_id = f"turn_{turn_index:03d}"
+
+        self._write_behavior(
+            case_id=case_id,
+            turn_id=turn_id,
+            agent_role="user",
+            task_type="user_question",
+            status="ok",
+            user_message=question,
+            effective_question=effective_question,
+            reference_date=self._reference_date,
+        )
         print("[DEBUG] Question of this turn:")
         print(effective_question)
 
@@ -119,13 +157,29 @@ class PlanExecuteRunner(AgentRunner):
         _log.info("Planning...")
         plan = self._planner.generate_plan(effective_question, server_descriptions)
         _log.info("Plan has %d step(s).", len(plan.steps))
+        self._write_behavior(
+            case_id=case_id,
+            turn_id=turn_id,
+            agent_role="planner",
+            task_type="plan_generation",
+            status="ok",
+            plan_id="plan_001",
+            plan_kind="original",
+            plan=plan_to_dict(plan),
+        )
 
         # 3. Execute (with replan loop on failures)
         original_plan = plan
         replans: list = []
         accumulated_context: dict[int, object] = {}
 
-        round_history = await self._executor.execute_plan(plan, effective_question)
+        round_history = await self._executor.execute_plan(
+            plan,
+            effective_question,
+            case_id=case_id,
+            turn_id=turn_id,
+            plan_id="plan_001",
+        )
         for r in round_history:
             accumulated_context[r.step_number] = r
         history = round_history
@@ -151,12 +205,43 @@ class PlanExecuteRunner(AgentRunner):
             )
             if not replan.steps:
                 _log.warning("Replan produced no steps; stopping.")
+                self._write_behavior(
+                    case_id=case_id,
+                    turn_id=turn_id,
+                    agent_role="planner",
+                    task_type="replan_generation",
+                    status="failed",
+                    plan_id=f"replan_{attempt + 1:03d}",
+                    plan_kind="replan",
+                    replan_attempt=attempt + 1,
+                    failed_step_numbers=[r.step_number for r in failed],
+                    error_message="Replan produced no steps.",
+                    plan=plan_to_dict(replan),
+                )
                 break
             _log.info("Replan has %d new step(s).", len(replan.steps))
+            replan_id = f"replan_{attempt + 1:03d}"
+            self._write_behavior(
+                case_id=case_id,
+                turn_id=turn_id,
+                agent_role="planner",
+                task_type="replan_generation",
+                status="ok",
+                plan_id=replan_id,
+                plan_kind="replan",
+                replan_attempt=attempt + 1,
+                failed_step_numbers=[r.step_number for r in failed],
+                plan=plan_to_dict(replan),
+            )
             replans.append(replan)
             next_step = max(s.step_number for s in replan.steps) + 1
             round_history = await self._executor.execute_plan(
-                replan, effective_question, prior_context=accumulated_context
+                replan,
+                effective_question,
+                prior_context=accumulated_context,
+                case_id=case_id,
+                turn_id=turn_id,
+                plan_id=replan_id,
             )
             for r in round_history:
                 accumulated_context[r.step_number] = r
@@ -177,6 +262,15 @@ class PlanExecuteRunner(AgentRunner):
         answer = self._llm.generate(
             _SUMMARIZE_PROMPT.format(question=question, results=results_text)
         )
+        self._write_behavior(
+            case_id=case_id,
+            turn_id=turn_id,
+            agent_role="summarizer",
+            task_type="final_response",
+            status="ok",
+            input_step_numbers=[r.step_number for r in history],
+            final_response=answer,
+        )
 
         result = OrchestratorResult(
             question=question,
@@ -188,3 +282,20 @@ class PlanExecuteRunner(AgentRunner):
         if session is not None:
             session.record_turn(question=question, answer=answer, history=history)
         return result
+
+    def _write_behavior(self, *, case_id: str, **kwargs) -> None:
+        if self._behavior_log is None:
+            return
+        self._behavior_log.write(case_id=case_id, **kwargs)
+
+    @staticmethod
+    def _make_case_id() -> str:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        short = uuid.uuid4().hex[:6]
+        return f"case_{ts}_{short}"
+
+    @staticmethod
+    def _resolve_reference_date(reference_date: str | None) -> str | None:
+        if reference_date is None:
+            return None
+        return datetime.strptime(reference_date, "%Y-%m-%d").date().isoformat()
