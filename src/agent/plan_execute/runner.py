@@ -95,7 +95,7 @@ class PlanExecuteRunner(AgentRunner):
         )
         self._dialog_case_id = self._make_case_id()
         self._turn_index = 0
-        self._planner = Planner(llm)
+        self._planner = Planner(llm, reference_date=self._reference_date)
         self._executor = Executor(
             llm,
             server_paths,
