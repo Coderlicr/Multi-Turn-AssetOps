@@ -10,6 +10,9 @@ import math
 import os
 import pickle
 import time
+import inspect
+import contextlib
+import sys
 import yaml
 
 import numpy as np
@@ -538,14 +541,25 @@ def _finetune_ttm_hf(
     with open(os.path.join(save_model_dir, "training_config.yml"), "w") as outfile:
         yaml.dump(training_config_dictionary, outfile)
 
+    training_args_signature = inspect.signature(TrainingArguments.__init__).parameters
+    if (
+        "evaluation_strategy" in training_config_dictionary
+        and "evaluation_strategy" not in training_args_signature
+        and "eval_strategy" in training_args_signature
+    ):
+        training_config_dictionary["eval_strategy"] = training_config_dictionary.pop(
+            "evaluation_strategy"
+        )
+
     finetune_forecast_args = TrainingArguments(**training_config_dictionary)
 
     if n_finetune > 0:
         if lr <= 0:
             try:
-                lr, finetune_forecast_model = optimal_lr_finder(
-                    finetune_forecast_model, train_dataset, batch_size=batch_size
-                )
+                with contextlib.redirect_stdout(sys.stderr):
+                    lr, finetune_forecast_model = optimal_lr_finder(
+                        finetune_forecast_model, train_dataset, batch_size=batch_size
+                    )
                 if lr <= 0:
                     lr = 0.0001
             except Exception:
@@ -603,7 +617,8 @@ def _finetune_ttm_hf(
 
     start_time = time.time()
     if n_finetune > 0:
-        finetune_forecast_trainer.train()
+        with contextlib.redirect_stdout(sys.stderr):
+            finetune_forecast_trainer.train()
     train_time = time.time() - start_time
 
     dataset_eval: dict = {}
@@ -620,12 +635,13 @@ def _finetune_ttm_hf(
             inverse_transforms_eval.append(
                 tsp.target_scaler_dict["0"].inverse_transform
             )
-        y_gt, y_pred_eval, _ = _get_gt_and_predictions(
-            finetune_forecast_trainer,
-            dataset_eval[dataset_key],
-            ix_target_features=ix_target_features,
-            inverse_transforms=inverse_transforms_eval,
-        )
+        with contextlib.redirect_stdout(sys.stderr):
+            y_gt, y_pred_eval, _ = _get_gt_and_predictions(
+                finetune_forecast_trainer,
+                dataset_eval[dataset_key],
+                ix_target_features=ix_target_features,
+                inverse_transforms=inverse_transforms_eval,
+            )
         target_columns = dataset_config_dictionary["column_specifiers"][
             "target_columns"
         ]
