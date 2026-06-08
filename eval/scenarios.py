@@ -55,7 +55,7 @@ SCENARIOS = [
         # WO history spans 2017–2019; no current-date-sensitive sensor queries.
         "reference_date": "2020-01-01",
         "turns": [
-            "Show me the work order history for Chiller 9 (CWC04009) for 2017 through 2019.",
+            "Show me the work order history for Chiller 9 for 2017 through 2019.",
             "Are there any corrective work orders that could have been bundled together?",
             "Based on this history, what is the most likely next failure?",
             "Should I schedule a preventive maintenance window for next month?",
