@@ -84,8 +84,12 @@ def format_artifacts_summary(artifacts: list) -> str:
 
         entry = (
             f"[{a.artifact_id}] type={a.artifact_type} producer={a.producer} "
-            f"assets={a.asset_ids}\n  payload: {payload_preview}"
+            f"assets={a.asset_ids}\n  source_tools: {getattr(a, 'source_tools', [])}"
         )
+        summary = getattr(a, "summary", "") or ""
+        if summary:
+            entry += f"\n  summary: {summary}"
+        entry += f"\n  payload: {payload_preview}"
         if file_paths:
             entry += f"\n  file_paths: {file_paths}"
         lines.append(entry)

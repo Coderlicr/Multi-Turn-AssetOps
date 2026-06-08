@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+from pathlib import Path
 import sys
 
 _FALLBACK_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
@@ -50,6 +51,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Disable behavior log file writing",
     )
     p.add_argument(
+        "--log-dir",
+        default=None,
+        metavar="DIR",
+        help="Behavior log directory (default: logs/supervisor_specialist).",
+    )
+    p.add_argument(
         "--reference-date",
         default=None,
         metavar="YYYY-MM-DD",
@@ -69,10 +76,9 @@ async def _run(args: argparse.Namespace) -> None:
 
     llm = LiteLLMBackend(model_id=args.model_id)
 
-    log_dir = None
+    log_dir = Path(args.log_dir) if args.log_dir else None
     if args.no_log:
         import tempfile
-        log_dir = None  # BehaviorLog will still write; pass a temp dir to suppress
         # Use /dev/null-like approach: write to a temp dir that we ignore
         import pathlib
         log_dir = pathlib.Path(tempfile.mkdtemp(prefix="ss_nolog_"))

@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 from abc import ABC
+from pathlib import Path
 
 from agent.supervisor_specialist._utils import (
     call_llm,
@@ -84,6 +85,8 @@ Option B — you have enough data, stop:
 
 Critical rules:
 - If a prior tool returned a file path (e.g. csv_path in iot.history_csv result), use THAT EXACT PATH string in subsequent calls — never invent a path
+- Artifact IDs such as "artifact_dc_001" or "artifact_ts_001" are references only; NEVER pass an artifact ID as a file path argument to a tool
+- For file-based tools, use only concrete paths from prior tool results or input artifact payloads, e.g. values named csv_path, results_file, json_path, or entries listed under file_paths
 - tool_name must exactly match one of the listed tool names
 - Date/time args MUST be ISO 8601 strings, e.g. "2020-06-01T00:00:00" — never use expressions or function calls
 - Stop (done=true) once you have enough data to produce a meaningful artifact
@@ -126,7 +129,7 @@ Use EXACTLY this schema:
       "source_artifacts": [...],
       "payload": {{...}},
       "open_questions": [...],
-      "summary": "<2-4 sentences: what you were asked to do, what tools you called, and what results you obtained — factual and neutral, no recommendations>"
+      "summary": "<2-4 sentences: what you were asked to do, what tools you called, and what result/conclusion you obtained; include requested recommendations for planning_result/draft_action artifacts, but do not add unrelated recommendations>"
     }}
   ]
 }}
@@ -134,12 +137,16 @@ Use EXACTLY this schema:
 Rules:
 - artifact_type must be one of: {allowed_artifact_types}
 - payload MUST include concrete quantitative findings from tool results — do NOT write only prose descriptions:
-  * For anomaly detection results: organize by asset first, then by column — e.g. {{"Chiller 3": {{"Supply Temperature": {{"anomaly_count": 345}}, ...}}, "Chiller 9": {{...}}}}; never aggregate across assets — each asset must have its own anomaly counts; always include the results_file path per asset
+  * For anomaly detection results: include top-level operation="anomaly_detection", task_completed=true, total anomaly_count, results_file, and target_columns; also organize per-asset/per-column details by asset — e.g. {{"Chiller 3": {{"Supply Temperature": {{"anomaly_count": 345}}, ...}}, "Chiller 9": {{...}}}}; never aggregate across assets — each asset must have its own anomaly counts; always include the results_file path per asset
   * For sensor/CSV data: include key stats (mean, std, min, max) for the most relevant columns
   * For work orders: include counts, types, and date ranges
+  * For reasoning_result artifacts, top-level task_completed, operation, primary_hypothesis or root_cause, competing_hypotheses when alternatives are being compared, evidence, confidence, and remaining_uncertainty fields are REQUIRED; do not hide the diagnosis only inside an asset-named nested object or only in summary text
   * Always include csv_path or file paths from tool results so downstream specialists can use them
 - open_questions should list uncertainties or recommended follow-up investigations
 - source_artifacts should list input artifact IDs you used (from the input artifacts section)
+- The summary must accurately name the tools that actually succeeded; do not say that fine-tuning, forecasting, or anomaly detection was performed unless the corresponding tsfm tool succeeded
+- For reasoning_result artifacts, the summary must state the current conclusion in one sentence, including the primary hypothesis/root cause and whether confidence is high, moderate, low, or unresolved
+{extra_artifact_rules}
 
 JSON:"""
 
@@ -203,6 +210,7 @@ class SpecialistAgent(ABC):
     allowed_tools: set[str]
     allowed_artifact_types: tuple[str, ...]
     _extra_react_rules: str = ""  # Subclasses can override to inject role-specific rules
+    _extra_artifact_rules: str = ""  # Subclasses can override to inject role-specific artifact rules
 
     def __init__(
         self,
@@ -249,15 +257,16 @@ class SpecialistAgent(ABC):
                 producer=self.role,
                 artifact_type=draft.artifact_type,
                 asset_ids=draft.asset_ids,
-                time_window=draft.time_window,
+                time_window=self._artifact_time_window(task, draft),
                 source_tools=successful_tools,
-                source_artifacts=draft.source_artifacts,
+                source_artifacts=self._valid_source_artifacts(task, draft.source_artifacts),
                 payload=draft.payload,
                 open_questions=draft.open_questions,
                 summary=draft.summary,
             )
             for draft in final.artifacts
         ]
+        self._postprocess_artifacts(task, artifacts, results)
 
         self.logger.write(
             case_id=task.case_id,
@@ -339,6 +348,16 @@ class SpecialistAgent(ABC):
 
             # LLM signals it is done
             if parsed.get("done"):
+                done_blocker = self._done_blocking_message(task, input_artifacts, results)
+                if done_blocker:
+                    results.append(ToolCallResult(
+                        order=call_num,
+                        tool_name="internal.done_guard",
+                        args={},
+                        status="failed",
+                        error=done_blocker,
+                    ))
+                    continue
                 _log.debug("%s: ReAct loop done after %d call(s).", self.role, call_num - 1)
                 break
 
@@ -365,6 +384,27 @@ class SpecialistAgent(ABC):
                 results.append(ToolCallResult(
                     order=call_num, tool_name=tool_name, args=args,
                     status="failed", error="Tool is not allowed for this specialist.",
+                ))
+                continue
+
+            file_arg_error = self._validate_file_args(
+                tool_name, args, input_artifacts, results
+            )
+            if file_arg_error:
+                _log.warning("%s: invalid file argument blocked: %s", self.role, file_arg_error)
+                self.event_stream.emit(
+                    case_id=task.case_id,
+                    agent_role=self.role,
+                    task_type=task.task_type,
+                    status="failed",
+                    message=file_arg_error,
+                )
+                results.append(ToolCallResult(
+                    order=call_num,
+                    tool_name=tool_name,
+                    args=args,
+                    status="failed",
+                    error=file_arg_error,
                 ))
                 continue
 
@@ -415,6 +455,75 @@ class SpecialistAgent(ABC):
 
         return results
 
+    def _done_blocking_message(
+        self,
+        task: TaskEnvelope,
+        input_artifacts: list[ArtifactEnvelope],
+        results: list[ToolCallResult],
+    ) -> str | None:
+        return None
+
+    def _postprocess_artifacts(
+        self,
+        task: TaskEnvelope,
+        artifacts: list[ArtifactEnvelope],
+        results: list[ToolCallResult],
+    ) -> None:
+        return None
+
+    @staticmethod
+    def _artifact_time_window(task: TaskEnvelope, draft: ArtifactDraft) -> TimeWindow:
+        if task.time_window.start or task.time_window.end:
+            return task.time_window
+        return draft.time_window
+
+    @staticmethod
+    def _valid_source_artifacts(task: TaskEnvelope, source_artifacts: list[str]) -> list[str]:
+        allowed = set(task.input_artifacts)
+        return [artifact_id for artifact_id in source_artifacts if artifact_id in allowed]
+
+    def _validate_file_args(
+        self,
+        tool_name: str,
+        args: dict,
+        input_artifacts: list[ArtifactEnvelope],
+        results: list[ToolCallResult],
+    ) -> str | None:
+        del input_artifacts, results
+        if not (
+            tool_name.startswith("tsfm.")
+            or tool_name in {"utilities.csv_stats", "utilities.json_reader"}
+        ):
+            return None
+
+        file_arg_names = {
+            "csv_path",
+            "dataset_path",
+            "results_file",
+            "json_path",
+            "path",
+            "file_path",
+        }
+        for name, value in args.items():
+            if name not in file_arg_names or not isinstance(value, str):
+                continue
+            if value.startswith("artifact_"):
+                return (
+                    f"{tool_name} received artifact ID '{value}' as a file path. "
+                    "Use a concrete file path from an input artifact payload instead."
+                )
+            if value.startswith("path/to/") or value.startswith("<") or value.endswith(">"):
+                return (
+                    f"{tool_name} received placeholder file path '{value}'. "
+                    "Use an existing concrete file path from an input artifact payload."
+                )
+            if not Path(value).is_file():
+                return (
+                    f"{tool_name} received non-existent file path '{value}'. "
+                    "Collect the data first or use a concrete file path returned by a prior tool."
+                )
+        return None
+
     async def _call_llm_for_artifacts(
         self,
         task: TaskEnvelope,
@@ -430,6 +539,7 @@ class SpecialistAgent(ABC):
             input_artifacts_summary=format_artifacts_summary(input_artifacts),
             tool_results=format_tool_results_for_prompt(tool_results),
             allowed_artifact_types=", ".join(self.allowed_artifact_types),
+            extra_artifact_rules=self._extra_artifact_rules,
         )
         for attempt in range(2):
             raw = await call_llm(self.llm, prompt)
