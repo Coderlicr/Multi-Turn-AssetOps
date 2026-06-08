@@ -73,6 +73,11 @@ _MONTH_RE = re.compile(
     r")\s+(\d{4})\b",
     re.IGNORECASE,
 )
+_YEAR_RANGE_RE = re.compile(
+    r"\b(19\d{2}|20\d{2})\b\s*(?:through|thru|to|[-–—]|until|and)\s*\b(19\d{2}|20\d{2})\b",
+    re.IGNORECASE,
+)
+_SINGLE_YEAR_RE = re.compile(r"\b(?:in|for|during)\s+(19\d{2}|20\d{2})\b", re.IGNORECASE)
 _METRIC_KEYWORDS = {
     "temperature": ["temperature", "temp"],
     "efficiency": ["efficiency", "kw/ton", "kW/ton"],
@@ -125,6 +130,27 @@ def _parse_time_window(
     text = message.lower()
     if "same period" in text and memory and memory.active_time_window.start:
         return memory.active_time_window
+
+    year_range_match = _YEAR_RANGE_RE.search(message)
+    if year_range_match:
+        start_year = int(year_range_match.group(1))
+        end_year = int(year_range_match.group(2))
+        if start_year > end_year:
+            start_year, end_year = end_year, start_year
+        return TimeWindow(
+            start=f"{start_year:04d}-01-01T00:00:00",
+            end=f"{end_year:04d}-12-31T23:59:59",
+            mode="year_range",
+        )
+
+    single_year_match = _SINGLE_YEAR_RE.search(message)
+    if single_year_match:
+        year = int(single_year_match.group(1))
+        return TimeWindow(
+            start=f"{year:04d}-01-01T00:00:00",
+            end=f"{year:04d}-12-31T23:59:59",
+            mode="calendar_year",
+        )
 
     month_match = _MONTH_RE.search(message)
     if month_match:

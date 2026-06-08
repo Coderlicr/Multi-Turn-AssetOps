@@ -155,7 +155,7 @@ _MAX_RETRIES = 3
 def _build_llm():
     from llm import LiteLLMBackend
 
-    model_id = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
+m    model_id = os.environ.get("DEFAULT_MODEL_ID", _DEFAULT_MODEL_ID)
     if model_id.startswith("watsonx/"):
         missing = [v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)]
         if missing:

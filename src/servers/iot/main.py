@@ -2,7 +2,6 @@ import csv
 import json
 import os
 import logging
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -307,7 +306,7 @@ def history_csv(
     safe_asset = asset_id.replace(" ", "_").replace("/", "-")
     safe_start = start.replace(":", "").replace("-", "")
     safe_final = (final or "now").replace(":", "").replace("-", "")
-    tmp_dir = Path(tempfile.gettempdir()) / "assetops"
+    tmp_dir = Path("/tmp/assetops")
     tmp_dir.mkdir(exist_ok=True)
     csv_path = tmp_dir / f"{safe_asset}_{safe_start}_{safe_final}_history.csv"
 

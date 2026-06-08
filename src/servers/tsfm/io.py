@@ -41,6 +41,20 @@ def _get_outputs_path(outputs: str) -> str:
     return os.path.join(os.environ.get("PATH_TO_OUTPUTS_DIR", ""), outputs)
 
 
+def _parse_timestamps(values) -> pd.Series:
+    """Parse ISO-like timestamps, including fractional seconds and timezone offsets."""
+    for kwargs in (
+        {"format": "ISO8601"},
+        {"format": "mixed"},
+        {},
+    ):
+        try:
+            return pd.to_datetime(values, **kwargs)
+        except (TypeError, ValueError):
+            continue
+    return pd.to_datetime(values)
+
+
 # ── JSON utilities ────────────────────────────────────────────────────────────
 
 
@@ -93,9 +107,10 @@ def _read_ts_data(dataset_path: str, dataset_config_dictionary=None) -> pd.DataF
     if ".csv" in dataset_path:
         if dataset_config_dictionary is not None:
             col_spec = dataset_config_dictionary["column_specifiers"]
-            data_df = pd.read_csv(
-                dataset_path, parse_dates=[col_spec["timestamp_column"]]
-            )
+            data_df = pd.read_csv(dataset_path)
+            timestamp_col = col_spec["timestamp_column"]
+            if timestamp_col in data_df.columns:
+                data_df[timestamp_col] = _parse_timestamps(data_df[timestamp_col])
         else:
             data_df = pd.read_csv(dataset_path)
 
@@ -121,9 +136,10 @@ def _read_ts_data(dataset_path: str, dataset_config_dictionary=None) -> pd.DataF
     elif ".xlsx" in dataset_path:
         if dataset_config_dictionary is not None:
             col_spec = dataset_config_dictionary["column_specifiers"]
-            data_df = pd.read_excel(
-                dataset_path, parse_dates=[col_spec["timestamp_column"]]
-            )
+            data_df = pd.read_excel(dataset_path)
+            timestamp_col = col_spec["timestamp_column"]
+            if timestamp_col in data_df.columns:
+                data_df[timestamp_col] = _parse_timestamps(data_df[timestamp_col])
         else:
             data_df = pd.read_excel(dataset_path)
 

@@ -24,7 +24,7 @@ from .dataquality import (
     _dq_timeseries_segmentation,
     _time_series_segment_quality_summary,
 )
-from .io import _make_json_compatible
+from .io import _make_json_compatible, _parse_timestamps
 from .metrics import _METRICS_FORECAST, _TSFREQUENCY_TOLERANCE, _freq_token_to_minutes
 
 
@@ -45,7 +45,7 @@ def _tsfm_data_quality_filter(
         data_col.extend(dataset_config_dictionary["operation_on_column"])
 
     df = df_dataframe[data_col].copy()
-    df[timestamp_col] = pd.to_datetime(df[timestamp_col])
+    df[timestamp_col] = _parse_timestamps(df[timestamp_col])
     for col in data_col:
         if col != timestamp_col:
             df[col] = df[col].astype(float)
@@ -66,7 +66,7 @@ def _tsfm_data_quality_filter(
             frequency_minutes = _freq_token_to_minutes[freq_str]
 
     if frequency_minutes is None:
-        timestamps = pd.to_datetime(df[timestamp_col])
+        timestamps = _parse_timestamps(df[timestamp_col])
         time_diffs = timestamps.diff().dropna()
         frequency_minutes = float(time_diffs.dt.total_seconds().div(60).median())
 
