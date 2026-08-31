@@ -1,4 +1,4 @@
-# WTB-50 Supervisor-Specialist 修复 Pilot
+# WTB-50 三架构 Pilot
 
 ## 设置
 
@@ -13,6 +13,7 @@
 
 | 架构 | APR | OPR | 工具决策准确率 | 完成轮次 | Tokens | LLM 调用 | MaintIE 调用 | 总耗时 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Plan-Execute | 6/9 | 2/11 | 9/11 | 11/11 | 60,785 | 47 | 26 | 85.57 秒 |
 | Supervisor-Specialist | 9/9 | 10/11 | 10/11 | 11/11 | 76,475 | 29 | 9 | 39.06 秒 |
 | Supervisor-Specialist-Parallel | 9/9 | 11/11 | 11/11 | 11/11 | 69,368 | 26 | 9 | 36.87 秒 |
 
@@ -20,6 +21,7 @@
 
 | 架构 | WTB01 APR / OPR | WTB03 APR / OPR | WTB15 APR / OPR |
 |---|---:|---:|---:|
+| Plan-Execute | 3/3 · 0/4 | 3/3 · 2/4 | 0/3 · 0/3 |
 | Supervisor-Specialist | 3/3 · 4/4 | 3/3 · 3/4 | 3/3 · 3/3 |
 | Supervisor-Specialist-Parallel | 3/3 · 4/4 | 3/3 · 4/4 | 3/3 · 3/3 |
 
@@ -32,6 +34,8 @@ WTB15 的三轮集合大小均为预期值：
 ```
 
 完整 ID 只保存在 typed state 中；提示词和普通日志只保留集合大小、来源轮次和过滤条件。
+
+Plan-Execute 没有 typed selection：WTB15 三轮实际为 `98 → 347 → 37`，所以该对话 APR 和 OPR 都是 0。
 
 ## 与修复前对比
 
@@ -48,12 +52,15 @@ WTB15 的三轮集合大小均为预期值：
 
 ## 评分口径
 
-- APR 检查结构化结果是否覆盖完整金标准。评分器只规范化展示差异，例如 `count`/`n`、`replacements`/`replace`、键值对列表/字典；数值错误、数值对调或缺项仍然失败。
+- APR 检查回答是否覆盖完整金标准。Supervisor 直接读取 JSONL 的结构化 `result`；评分器只规范化 `count`/`n`、`replacements`/`replace`、键值对列表/字典等展示差异。Plan-Execute 尚未输出 `result`，本次按保存答案逐项核对；数值错误、数值对调或缺项仍然失败。
 - OPR 只统计 7 个真实 MaintIE 工具。并行组内部顺序不计，串行顺序、重复调用、额外调用和漏调用都会扣分。
 - 工具决策准确率只判断该轮是否应该调用真实 MaintIE，不判断具体工具和参数。
 
+APR 分母为 9：11 轮中有 9 轮包含可精确核对的结果，2 轮是澄清或闲聊。OPR 和工具决策准确率分母均为全部 11 轮；缺失轮、额外轮、额外工具和本应无工具却调用工具都会扣分。
+
 ## 运行产物
 
+- Plan-Execute：`eval/results/pilot_wtb50_plan_execute_latest/`
 - 顺序版：`eval/results/pilot_wtb50_supervisor_specialist_fixed_v4/`
 - 并行版：`eval/results/pilot_wtb50_supervisor_specialist_parallel_fixed/`
 - 修复前基线：`eval/results/pilot_wtb50_supervisor_specialist/` 和 `eval/results/pilot_wtb50_supervisor_specialist_parallel/`

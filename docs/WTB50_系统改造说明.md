@@ -123,7 +123,8 @@ WTB50 默认使用 `deepseek/deepseek-v4-flash`。API key 保存在本地 `.env`
 
 - MaintIE Server 和 7 个工具可正常调用；
 - 三种架构的 WTB01 smoke test 均为 4/4 轮完成；
-- Supervisor 两个变体的 WTB01/03/15 pilot 均为 11/11 轮完成；
+- 三种架构的 WTB01/03/15 pilot 均为 11/11 轮完成；
+- Plan-Execute 的 APR/OPR 为 6/9、2/11；
 - 顺序版 APR/OPR 为 9/9、10/11，并行版为 9/9、11/11；
 - WTB15 跨轮筛选得到 107、40、24；
 - 下一步是冻结代码和 prompt，再开始正式实验。

@@ -73,6 +73,7 @@ Pilot 只用于发现工程和评分问题，不进入论文主结果。
 - [x] DeepSeek 单次 API smoke test 通过；按官方 OpenAI 格式关闭 thinking。
 - [x] 三架构 WTB01 smoke test 通过（均为4/4轮，无 API/MCP 错误）。
 - [x] Supervisor 两个变体的 WTB01/03/15 pilot 通过：11/11 轮完成，APR 9/9，OPR 10/11 与 11/11，WTB15 为 107→40→24。
+- [x] Plan-Execute 的同场景 pilot 完成 11/11 轮，APR 6/9、OPR 2/11；WTB15 暴露跨轮集合缺失，正式实验前需决定是否为该架构补 typed selection。
 - [ ] 冻结当前代码、prompt 和评分器后开始正式实验。
 
 ## 命令
