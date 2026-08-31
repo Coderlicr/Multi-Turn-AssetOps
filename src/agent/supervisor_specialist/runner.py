@@ -138,6 +138,7 @@ class SupervisorSpecialistRunner:
             tool_calls=[],
             output_artifact_ids=[],
             status="ok",
+            turn_id="turn_001",
             user_message=question,
         )
         initial_state = self._initial_state(question, case_state)
@@ -159,6 +160,12 @@ class SupervisorSpecialistRunner:
             case_id = case_state.case_id
             input_state = self._initial_state(question, case_state)
 
+        next_turn_index = (
+            self._last_dialog_state.get("turn_index", 0) + 1
+            if self._dialog_started and self._last_dialog_state
+            else 1
+        )
+
         self._behavior_log.write(
             case_id=case_id,
             agent_role="user",
@@ -167,6 +174,7 @@ class SupervisorSpecialistRunner:
             tool_calls=[],
             output_artifact_ids=[],
             status="ok",
+            turn_id=f"turn_{next_turn_index:03d}",
             user_message=question,
         )
         result = await self._graph.ainvoke(input_state, config=config)

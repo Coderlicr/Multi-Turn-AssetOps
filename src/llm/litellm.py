@@ -9,6 +9,7 @@ in the model-string prefix — no separate platform flag is needed:
 Credentials are resolved from environment variables based on the prefix:
 
     watsonx/*  :  WATSONX_APIKEY, WATSONX_PROJECT_ID, WATSONX_URL (optional)
+    deepseek/* :  DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL (optional base URL)
     otherwise  :  LITELLM_API_KEY, LITELLM_BASE_URL
 
 Profiling hooks (all opt-in via env vars, zero impact when unset):
@@ -102,7 +103,7 @@ class LiteLLMBackend(LLMBackend):
             "model": self._model_id,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
-            "max_tokens": 2048,
+            "max_tokens": int(os.environ.get("LLM_MAX_TOKENS", "8192")),
         }
 
         if self._model_id.startswith("watsonx/"):
@@ -110,6 +111,25 @@ class LiteLLMBackend(LLMBackend):
             kwargs["project_id"] = os.environ["WATSONX_PROJECT_ID"]
             if url := os.environ.get("WATSONX_URL"):
                 kwargs["api_base"] = url
+        elif self._model_id.startswith("deepseek/"):
+            kwargs["api_key"] = os.environ["DEEPSEEK_API_KEY"]
+            kwargs["api_base"] = os.environ.get(
+                "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
+            )
+            thinking = os.environ.get("DEEPSEEK_THINKING", "disabled").lower()
+            if thinking not in {"enabled", "disabled"}:
+                raise ValueError(
+                    "DEEPSEEK_THINKING must be either 'enabled' or 'disabled'"
+                )
+            # DeepSeek's OpenAI-compatible API requires the thinking switch in
+            # extra_body. V4 defaults to enabled/high, which can consume the
+            # whole completion budget before emitting the structured answer.
+            kwargs["extra_body"] = {"thinking": {"type": thinking}}
+            if thinking == "enabled":
+                kwargs.pop("temperature", None)
+                kwargs["reasoning_effort"] = os.environ.get(
+                    "DEEPSEEK_REASONING_EFFORT", "high"
+                )
         else:
             kwargs["api_key"] = os.environ["LITELLM_API_KEY"]
             kwargs["api_base"] = os.environ["LITELLM_BASE_URL"]

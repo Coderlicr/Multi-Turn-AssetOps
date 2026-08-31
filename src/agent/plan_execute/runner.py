@@ -79,10 +79,11 @@ class PlanExecuteRunner(AgentRunner):
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        reference_date: str | None = None,
     ) -> None:
         super().__init__(llm, server_paths)
         self._planner = Planner(llm)
-        self._executor = Executor(llm, server_paths)
+        self._executor = Executor(llm, server_paths, reference_date=reference_date)
 
     async def run(
         self,
@@ -119,6 +120,21 @@ class PlanExecuteRunner(AgentRunner):
         _log.info("Planning...")
         plan = self._planner.generate_plan(effective_question, server_descriptions)
         _log.info("Plan has %d step(s).", len(plan.steps))
+        if plan.direct_answer is not None:
+            result = OrchestratorResult(
+                question=question,
+                answer=plan.direct_answer,
+                plan=plan,
+                history=[],
+            )
+            if session is not None:
+                session.record_turn(question=question, answer=plan.direct_answer, history=[])
+            return result
+        if not plan.steps:
+            raise RuntimeError(
+                "Planner returned no executable steps. The model response may have "
+                "been truncated or did not follow the required plan format."
+            )
 
         # 3. Execute (with replan loop on failures)
         original_plan = plan

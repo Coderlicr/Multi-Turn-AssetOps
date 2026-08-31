@@ -99,7 +99,7 @@ def compute_psd(
     return {
         "frequencies": freqs,
         "psd": psd,
-        "total_power": float(np.trapezoid(psd, freqs)),
+        "total_power": float(np.trapz(psd, freqs)),
         "resolution_hz": freqs[1] - freqs[0] if len(freqs) > 1 else 0,
     }
 

@@ -1,5 +1,6 @@
 import json
 import os
+import copy
 
 import pytest
 from unittest.mock import MagicMock, patch
@@ -8,6 +9,17 @@ requires_watsonx = pytest.mark.skipif(
     os.environ.get("WATSONX_APIKEY") is None,
     reason="WatsonX not available (set WATSONX_APIKEY)",
 )
+
+
+@pytest.fixture(autouse=True)
+def isolated_mapping_cache():
+    """Prevent one FMSR test's generated mappings from leaking into another."""
+    from servers.fmsr import main
+
+    snapshot = copy.deepcopy(main._SENSOR_MAPPING_CACHE)
+    main._SENSOR_MAPPING_CACHE = copy.deepcopy(snapshot)
+    yield
+    main._SENSOR_MAPPING_CACHE = snapshot
 
 
 async def call_tool(mcp_instance, tool_name: str, args: dict) -> dict:

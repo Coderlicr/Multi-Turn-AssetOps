@@ -33,12 +33,16 @@ def _build_parser() -> argparse.ArgumentParser:
 model-id format:
   The provider is encoded in the model-id prefix:
     watsonx/<model>          IBM WatsonX  (e.g. watsonx/meta-llama/llama-3-3-70b-instruct)
+    deepseek/<model>         DeepSeek API (e.g. deepseek/deepseek-chat)
     litellm_proxy/<model>    LiteLLM proxy (e.g. litellm_proxy/GCP/claude-4-sonnet)
 
 environment variables:
   WATSONX_APIKEY        IBM WatsonX API key      (required for watsonx/* models)
   WATSONX_PROJECT_ID    IBM WatsonX project ID   (required for watsonx/* models)
   WATSONX_URL           IBM WatsonX endpoint     (optional, defaults to us-south)
+
+  DEEPSEEK_API_KEY      DeepSeek API key         (required for deepseek/* models)
+  DEEPSEEK_BASE_URL     DeepSeek base URL        (optional)
 
   LITELLM_API_KEY       LiteLLM API key          (required for non-watsonx models)
   LITELLM_BASE_URL      LiteLLM base URL         (required for non-watsonx models)
@@ -99,6 +103,12 @@ examples:
         help="Enter a simple REPL and retain minimal session state across turns.",
     )
     parser.add_argument(
+        "--reference-date",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Anchor date used to resolve relative dates consistently across systems.",
+    )
+    parser.add_argument(
         "--save-output",
         nargs="?",
         const=_AUTO_SAVE_OUTPUT,
@@ -135,11 +145,11 @@ def _build_llm(model_id: str):
         sys.exit(1)
 
 
-def _parse_servers(entries: list[str]) -> dict[str, Path] | None:
+def _parse_servers(entries: list[str]) -> dict[str, Path | str] | None:
     """Parse NAME=PATH pairs into a server_paths dict, or None if empty."""
     if not entries:
         return None
-    result: dict[str, Path] = {}
+    result: dict[str, Path | str] = {}
     for entry in entries:
         if "=" not in entry:
             print(
@@ -148,7 +158,10 @@ def _parse_servers(entries: list[str]) -> dict[str, Path] | None:
             )
             sys.exit(1)
         name, _, path = entry.partition("=")
-        result[name.strip()] = Path(path.strip())
+        value = path.strip()
+        result[name.strip()] = (
+            value if "/" not in value and "\\" not in value else Path(value)
+        )
     return result
 
 
@@ -164,7 +177,11 @@ async def _run(args: argparse.Namespace) -> None:
 
     llm = _build_llm(args.model_id)
     server_paths = _parse_servers(args.servers)
-    runner = PlanExecuteRunner(llm=llm, server_paths=server_paths)
+    runner = PlanExecuteRunner(
+        llm=llm,
+        server_paths=server_paths,
+        reference_date=args.reference_date,
+    )
     session = SessionState()
     args.save_output_path = _prepare_output_path(args)
 

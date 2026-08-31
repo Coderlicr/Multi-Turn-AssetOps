@@ -38,9 +38,14 @@ Output format — one block per step, exactly:
 #Dependency2: #S1
 #ExpectedOutput2: <what this step should produce>
 
+If the current turn is only chat, acknowledgement, or a clarification that can
+be answered from the recent conversation or the tool descriptions, do not call
+a tool. Output exactly one line instead:
+#NoTool: <concise direct response>
+
 Rules:
 - Server and tool names must exactly match those listed above.
-- Every step must call a real tool on a real server. Do NOT generate steps with tool="none" or server="none" — final synthesis is handled automatically after all steps complete.
+- Every planned step must call a real tool. Never invent tool="none" or server="none"; use #NoTool for a turn that needs no tool.
 - Dependencies use #S<N> notation (e.g., #S1, #S2). Use "None" if none.
 - Keep tasks specific and actionable.
 - CRITICAL: The tools sensors, history_csv, and history only support ONE asset per call. You MUST create one step per asset. Example — for Chiller 6 and Chiller 9: create step A "Get sensors for Chiller 6" AND step B "Get sensors for Chiller 9". NEVER write "Get sensors for Chiller 6 and Chiller 9" as a single step.
@@ -99,6 +104,7 @@ _TOOL_RE = re.compile(r"#Tool(\d+):\s*(.+)")
 _DEP_RE = re.compile(r"#Dependency(\d+):\s*(.+)")
 _OUTPUT_RE = re.compile(r"#ExpectedOutput(\d+):\s*(.+)")
 _DEP_NUM_RE = re.compile(r"#S(\d+)")
+_NO_TOOL_RE = re.compile(r"#NoTool:\s*(.+)")
 
 
 def parse_plan(raw: str) -> Plan:
@@ -145,7 +151,12 @@ def parse_plan(raw: str) -> Plan:
             )
         )
 
-    return Plan(steps=steps, raw=raw)
+    no_tool = _NO_TOOL_RE.search(raw)
+    return Plan(
+        steps=steps,
+        raw=raw,
+        direct_answer=no_tool.group(1).strip() if no_tool and not steps else None,
+    )
 
 
 class Planner:

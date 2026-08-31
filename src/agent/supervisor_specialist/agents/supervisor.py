@@ -32,7 +32,7 @@ Latest user message:
 {current_user_message}
 
 Available specialists:
-- data_collection_specialist: Collects IoT sensor data, work orders, events, alert rules, asset/sensor inventory
+- data_collection_specialist: Collects IoT data and queries the MaintIE annotated work-order corpus (search/count/group/rank/compare)
 - time_series_analysis_specialist: Performs trend analysis, forecasting, and anomaly detection on time-series data
 - failure_reasoning_specialist: Maps sensor anomaly patterns to failure modes and produces root cause hypotheses
 - maintenance_planning_specialist: Generates maintenance plans, work order recommendations, and action drafts
@@ -56,6 +56,7 @@ Your job: decide the next action. Options:
 
 Decision rules:
 - Start with data_collection_specialist to gather sensor data and work orders
+- MaintIE corpus analytics always go to data_collection_specialist; reuse its prior artifacts across turns
 - Use time_series_analysis_specialist after data collection to detect anomalies/trends
 - Use failure_reasoning_specialist after anomaly detection to identify root causes
 - Use maintenance_planning_specialist when diagnosis is complete and action plan is needed

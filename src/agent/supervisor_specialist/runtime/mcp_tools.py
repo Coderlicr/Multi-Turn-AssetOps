@@ -26,6 +26,7 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "fmsr": "fmsr-mcp-server",
     "tsfm": "tsfm-mcp-server",
     "wo": "wo-mcp-server",
+    "maintie": "maintie-mcp-server",
     # vibration excluded: no chiller asset data available
 }
 

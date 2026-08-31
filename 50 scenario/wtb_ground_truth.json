@@ -1,0 +1,2459 @@
+{
+  "WTB01": [
+    {
+      "type": "task",
+      "intent": "count replacements & repairs",
+      "tools": [
+        [
+          "count:Replace",
+          "count:Repair"
+        ]
+      ],
+      "result": {
+        "replace": 347,
+        "repair": 127
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "of replacements, top object class",
+      "tools": [
+        [
+          "filter:Replace>group:object>rank:1"
+        ]
+      ],
+      "result": {
+        "top": [
+          [
+            "Lines & drives",
+            89
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "clarify",
+      "intent": "confirm 'change out'==Replace; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "top 3 replaced classes (reuse grouping)",
+      "tools": [
+        [
+          "rank:3"
+        ]
+      ],
+      "result": {
+        "top3": [
+          [
+            "Lines & drives",
+            89
+          ],
+          [
+            "Engines & motors",
+            44
+          ],
+          [
+            "Structural/mounting parts",
+            36
+          ]
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB02": [
+    {
+      "type": "task",
+      "intent": "build leak set",
+      "tools": [
+        [
+          "search:process_fault"
+        ]
+      ],
+      "result": {
+        "leak_WOs": 146
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "acknowledge; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "on leak set: seal vs replace",
+      "tools": [
+        [
+          "count:Modify@set",
+          "count:Replace@set"
+        ]
+      ],
+      "result": {
+        "seal": 0,
+        "replace": 22
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "worst object class in leak set",
+      "tools": [
+        [
+          "rank:1@set"
+        ]
+      ],
+      "result": {
+        "worst": [
+          "Guards & protective parts",
+          45
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB03": [
+    {
+      "type": "task",
+      "intent": "compare bearings & seals (parallel)",
+      "tools": [
+        [
+          "extract:bearing",
+          "extract:seal"
+        ]
+      ],
+      "result": {
+        "bearing": {
+          "fault": 10,
+          "remedy": {
+            "Replace": 9,
+            "Inspect": 6,
+            "Service": 1,
+            "Diagnose": 1,
+            "Repair": 1
+          }
+        },
+        "seal": {
+          "fault": 14,
+          "remedy": {
+            "Replace": 7,
+            "Repair": 1,
+            "Diagnose": 2
+          }
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "which of the two worse",
+      "tools": [
+        [
+          "compare"
+        ]
+      ],
+      "result": {
+        "worse": "seal"
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "acknowledge; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "add belts -> 3-way",
+      "tools": [
+        [
+          "extract:belt"
+        ]
+      ],
+      "result": {
+        "belt": {
+          "fault": 31,
+          "remedy": {
+            "Replace": 56,
+            "Inspect": 5,
+            "Repair": 5,
+            "Service": 1,
+            "Adjust": 2
+          }
+        }
+      },
+      "judge": false
+    }
+  ],
+  "WTB04": [
+    {
+      "type": "task",
+      "intent": "ambiguous 'biggest headache' -> await metric or assume fault-count",
+      "tools": [
+        [
+          "rank:fault_class:1"
+        ]
+      ],
+      "result": {
+        "top": [
+          "Lines & drives",
+          107
+        ]
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "metric = most-failing component (not cost); no new tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "usual remedy for that component",
+      "tools": [
+        [
+          "filter:top>remedy_dist>argmax"
+        ]
+      ],
+      "result": {
+        "remedy": "Replace"
+      },
+      "judge": false
+    }
+  ],
+  "WTB05": [
+    {
+      "type": "task",
+      "intent": "inspections that find a fault",
+      "tools": [
+        [
+          "search:Inspect>count:fault"
+        ]
+      ],
+      "result": {
+        "inspect_with_fault": 4
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "break by equipment type",
+      "tools": [
+        [
+          "group:object@set"
+        ]
+      ],
+      "result": {
+        "by_class": {
+          "Engines & motors": [
+            2,
+            24
+          ],
+          "Structural/mounting parts": [
+            0,
+            18
+          ],
+          "Guards & protective parts": [
+            3,
+            9
+          ],
+          "Transformers/gearboxes": [
+            1,
+            8
+          ],
+          "Pumps/fans/generators": [
+            0,
+            7
+          ]
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "lowest-yield (wasted) type",
+      "tools": [
+        [
+          "rank_asc:yield"
+        ]
+      ],
+      "result": {
+        "low_yield": [
+          [
+            "Structural/mounting parts",
+            0.0
+          ],
+          [
+            "Tanks & storage",
+            0.0
+          ],
+          [
+            "Pumps/fans/generators",
+            0.0
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    }
+  ],
+  "WTB06": [
+    {
+      "type": "task",
+      "intent": "top10 most-replaced",
+      "tools": [
+        [
+          "rank:replace:10"
+        ]
+      ],
+      "result": {
+        "top10": [
+          [
+            "Lines & drives",
+            89
+          ],
+          [
+            "Engines & motors",
+            44
+          ],
+          [
+            "Structural/mounting parts",
+            36
+          ],
+          [
+            "Pumps/fans/generators",
+            29
+          ],
+          [
+            "Valves/breakers/switches",
+            19
+          ],
+          [
+            "Sensors & gauges",
+            19
+          ],
+          [
+            "Transformers/gearboxes",
+            19
+          ],
+          [
+            "Filters & separators",
+            18
+          ],
+          [
+            "Guards & protective parts",
+            17
+          ],
+          [
+            "Covers & seals",
+            12
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "of those10: broken vs routine",
+      "tools": [
+        [
+          "split:failed@top10"
+        ]
+      ],
+      "result": {
+        "breakdown_within_top10": {
+          "Filters & separators": 5,
+          "Covers & seals": 2,
+          "Pumps/fans/generators": 6,
+          "Valves/breakers/switches": 12,
+          "Lines & drives": 19,
+          "Structural/mounting parts": 7,
+          "Guards & protective parts": 2,
+          "Sensors & gauges": 4,
+          "Engines & motors": 5,
+          "Transformers/gearboxes": 5
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "just the broken ones",
+      "tools": [
+        [
+          "filter:failed@top10"
+        ]
+      ],
+      "result": {
+        "broken": {
+          "Filters & separators": 5,
+          "Covers & seals": 2,
+          "Pumps/fans/generators": 6,
+          "Valves/breakers/switches": 12,
+          "Lines & drives": 19,
+          "Structural/mounting parts": 7,
+          "Guards & protective parts": 2,
+          "Sensors & gauges": 4,
+          "Engines & motors": 5,
+          "Transformers/gearboxes": 5
+        }
+      },
+      "judge": false
+    }
+  ],
+  "WTB07": [
+    {
+      "type": "task",
+      "intent": "pump problems (vague)",
+      "tools": [
+        [
+          "search:pump_text"
+        ]
+      ],
+      "result": {
+        "pump_text_WOs": 42
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "use text not asset tag; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "faults & remedies on text-pumps",
+      "tools": [
+        [
+          "extract@set"
+        ]
+      ],
+      "result": {
+        "remedies": {
+          "Replace": 22,
+          "Repair": 1,
+          "Diagnose": 1
+        },
+        "top_fault": "Failed/broken"
+      },
+      "judge": false
+    }
+  ],
+  "WTB08": [
+    {
+      "type": "task",
+      "intent": "failure-mode pareto",
+      "tools": [
+        [
+          "group:fault>rank"
+        ]
+      ],
+      "result": {
+        "pareto": [
+          [
+            "Failed/broken",
+            215
+          ],
+          [
+            "Faulty",
+            178
+          ],
+          [
+            "Active failure (leak/overheat)",
+            146
+          ],
+          [
+            "Worn/degraded",
+            45
+          ],
+          [
+            "Defect (crack/hole/noise)",
+            32
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "modes for 80%",
+      "tools": [
+        [
+          "cumsum"
+        ]
+      ],
+      "result": {
+        "modes_for_80pct": 3
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "top mode -> which kit",
+      "tools": [
+        [
+          "filter:topmode>group:object>rank:1"
+        ]
+      ],
+      "result": {
+        "top_mode": "Failed/broken",
+        "top_kit": [
+          "Lines & drives",
+          50
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB09": [
+    {
+      "type": "task",
+      "intent": "shift comparison (will fail: no shift field)",
+      "tools": [
+        [
+          "attempt:group:shift"
+        ]
+      ],
+      "result": {
+        "shift_field": "absent"
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "user drops shift; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "pivot: failures by type",
+      "tools": [
+        [
+          "group:object,fault"
+        ]
+      ],
+      "result": {
+        "by_class": [
+          [
+            "GuidingObject",
+            107
+          ],
+          [
+            "HoldingObject",
+            82
+          ],
+          [
+            "ProtectingObject",
+            75
+          ],
+          [
+            "EmittingObject",
+            72
+          ],
+          [
+            "GeneratingObject",
+            68
+          ]
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB10": [
+    {
+      "type": "task",
+      "intent": "bearing replacements",
+      "tools": [
+        [
+          "count:Replace&bearing"
+        ]
+      ],
+      "result": {
+        "bearing": 9
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "same for seals (elliptical)",
+      "tools": [
+        [
+          "count:Replace&seal"
+        ]
+      ],
+      "result": {
+        "seal": 7
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "same for belts; table all 3 (parallelisable)",
+      "tools": [
+        [
+          "count:Replace&belt"
+        ]
+      ],
+      "result": {
+        "belt": 56,
+        "table": {
+          "bearing": 9,
+          "seal": 7,
+          "belt": 56
+        }
+      },
+      "judge": false
+    }
+  ],
+  "WTB11": [
+    {
+      "type": "chat",
+      "intent": "coffee-machine banter; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "'anyway'; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "most common action on valves",
+      "tools": [
+        [
+          "filter:ControllingObject>remedy>argmax"
+        ]
+      ],
+      "result": {
+        "valve_top": "Replace"
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "different from sensors?",
+      "tools": [
+        [
+          "filter:Sensor>remedy>argmax"
+        ]
+      ],
+      "result": {
+        "sensor_top": "Replace"
+      },
+      "judge": false
+    }
+  ],
+  "WTB12": [
+    {
+      "type": "task",
+      "intent": "worst repeat offender",
+      "tools": [
+        [
+          "rank:fault_class:1"
+        ]
+      ],
+      "result": {
+        "worst": [
+          "Lines & drives",
+          107
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "evidence: counts+main fault",
+      "tools": [
+        [
+          "filter:top>count",
+          "filter:top>group:fault>rank:1"
+        ]
+      ],
+      "result": {
+        "count": 107,
+        "main_fault": "Failed/broken"
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "draft change (narrative)",
+      "tools": [
+        [
+          "compose"
+        ]
+      ],
+      "result": {
+        "target": "Lines & drives",
+        "basis": "Failed/broken"
+      },
+      "judge": true
+    }
+  ],
+  "WTB13": [
+    {
+      "type": "task",
+      "intent": "count leaks & cracks; which worse",
+      "tools": [
+        [
+          "count:leak",
+          "count:crack"
+        ]
+      ],
+      "result": {
+        "leak": 146,
+        "crack": 32,
+        "worse": "leak"
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "usual remedy for the worse one",
+      "tools": [
+        [
+          "filter:worse>remedy>argmax"
+        ]
+      ],
+      "result": {
+        "remedy": "Replace"
+      },
+      "judge": false
+    }
+  ],
+  "WTB14": [
+    {
+      "type": "task",
+      "intent": "most-replaced component",
+      "tools": [
+        [
+          "rank:replace:1"
+        ]
+      ],
+      "result": {
+        "top": "Lines & drives"
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "total inspections (distractor)",
+      "tools": [
+        [
+          "count:Inspect"
+        ]
+      ],
+      "result": {
+        "inspections": 62
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "callback: do we inspect THAT component?",
+      "tools": [
+        [
+          "count:Inspect&topcomp"
+        ]
+      ],
+      "result": {
+        "inspect_top_component": 6
+      },
+      "judge": false
+    }
+  ],
+  "WTB15": [
+    {
+      "type": "task",
+      "intent": "failures on lines & drives",
+      "tools": [
+        [
+          "search:GuidingObject&fault"
+        ]
+      ],
+      "result": {
+        "n": 107
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "narrow to replaced",
+      "tools": [
+        [
+          "filter:Replace@set"
+        ]
+      ],
+      "result": {
+        "n": 40
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "narrow to hoses",
+      "tools": [
+        [
+          "filter:hose@set"
+        ]
+      ],
+      "result": {
+        "n": 24
+      },
+      "judge": false
+    }
+  ],
+  "WTB16": [
+    {
+      "type": "task",
+      "intent": "how many replacements",
+      "tools": [
+        [
+          "count:Replace"
+        ]
+      ],
+      "result": {
+        "replace_jobs": 347
+      },
+      "judge": false
+    },
+    {
+      "type": "clarify",
+      "intent": "unit = distinct parts; recompute",
+      "tools": [
+        [
+          "distinct:object@Replace"
+        ]
+      ],
+      "result": {
+        "distinct_parts": 18
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "of those, wear items",
+      "tools": [
+        [
+          "intersect:wear"
+        ]
+      ],
+      "result": {
+        "wear_parts": 0
+      },
+      "judge": false
+    }
+  ],
+  "WTB17": [
+    {
+      "type": "task",
+      "intent": "engines: replace vs repair",
+      "tools": [
+        [
+          "count:eR",
+          "count:eP"
+        ]
+      ],
+      "result": {
+        "engine": {
+          "replace": 20,
+          "repair": 9
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "motors: same",
+      "tools": [
+        [
+          "count:mR",
+          "count:mP"
+        ]
+      ],
+      "result": {
+        "motor": {
+          "replace": 16,
+          "repair": 3
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "combine -> overall lean",
+      "tools": [
+        [
+          "merge"
+        ]
+      ],
+      "result": {
+        "overall": {
+          "replace": 36,
+          "repair": 12,
+          "lean": "replace"
+        }
+      },
+      "judge": false
+    }
+  ],
+  "WTB18": [
+    {
+      "type": "task",
+      "intent": "oil changes - what's it on",
+      "tools": [
+        [
+          "search:oil>infer_object"
+        ]
+      ],
+      "result": {
+        "oil_WOs": 70
+      },
+      "judge": true
+    },
+    {
+      "type": "follow",
+      "intent": "service or replacement in our coding",
+      "tools": [
+        [
+          "classify_activity@set"
+        ]
+      ],
+      "result": {
+        "service": 2,
+        "replace": 16
+      },
+      "judge": false
+    }
+  ],
+  "WTB19": [
+    {
+      "type": "task",
+      "intent": "of failures: replace/repair/service split",
+      "tools": [
+        [
+          "filter:failed>split3"
+        ]
+      ],
+      "result": {
+        "split": {
+          "Replace": 51,
+          "Repair": 4,
+          "Service": 0
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "which dominates",
+      "tools": [
+        [
+          "argmax"
+        ]
+      ],
+      "result": {
+        "dominant": "Replace"
+      },
+      "judge": false
+    },
+    {
+      "type": "clarify",
+      "intent": "ensure failed-only scope (re-scope if needed); no NEW tool if already scoped",
+      "tools": [],
+      "result": null,
+      "judge": false
+    }
+  ],
+  "WTB20": [
+    {
+      "type": "chat",
+      "intent": "game banter; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "most common fault overall",
+      "tools": [
+        [
+          "group:fault>rank:1"
+        ]
+      ],
+      "result": {
+        "top1": [
+          "Failed/broken",
+          215
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "second most common",
+      "tools": [
+        [
+          "index:2"
+        ]
+      ],
+      "result": {
+        "top2": [
+          "Faulty",
+          178
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    }
+  ],
+  "WTB21": [
+    {
+      "type": "task",
+      "intent": "run-to-failure component",
+      "tools": [
+        [
+          "rank:rtf:1"
+        ]
+      ],
+      "result": {
+        "top": [
+          "Lines & drives",
+          21
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "why it fails (infer mode, not cause)",
+      "tools": [
+        [
+          "filter:top>group:fault>rank:1"
+        ]
+      ],
+      "result": {
+        "likely_mode": "Failed/broken"
+      },
+      "judge": false
+    },
+    {
+      "type": "clarify",
+      "intent": "mode not cause; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    }
+  ],
+  "WTB22": [
+    {
+      "type": "task",
+      "intent": "4 dashboard numbers (parallel)",
+      "tools": [
+        [
+          "count:all",
+          "share:replace",
+          "share:fault",
+          "rank:fault:1"
+        ]
+      ],
+      "result": {
+        "total": 1076,
+        "replace_pct": 32.2,
+        "fault_pct": 51.9,
+        "top_component": "Lines & drives"
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "plain label for last one",
+      "tools": [
+        [
+          "humanize"
+        ]
+      ],
+      "result": {
+        "top_component_label": "Lines & drives"
+      },
+      "judge": false
+    }
+  ],
+  "WTB23": [
+    {
+      "type": "task",
+      "intent": "top5 most-replaced",
+      "tools": [
+        [
+          "rank:replace:5"
+        ]
+      ],
+      "result": {
+        "top5": [
+          [
+            "Lines & drives",
+            89
+          ],
+          [
+            "Engines & motors",
+            44
+          ],
+          [
+            "Structural/mounting parts",
+            36
+          ],
+          [
+            "Pumps/fans/generators",
+            29
+          ],
+          [
+            "Valves/breakers/switches",
+            19
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "what's the 3rd",
+      "tools": [
+        [
+          "index:3"
+        ]
+      ],
+      "result": {
+        "third": "Structural/mounting parts"
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "how often is the 5th a breakdown",
+      "tools": [
+        [
+          "filter:5th&failed>count"
+        ]
+      ],
+      "result": {
+        "fifth": "Valves/breakers/switches",
+        "breakdown": 12
+      },
+      "judge": false
+    }
+  ],
+  "WTB24": [
+    {
+      "type": "task",
+      "intent": "pump replacements",
+      "tools": [
+        [
+          "count:Replace&pump"
+        ]
+      ],
+      "result": {
+        "whole_pump": 23
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "correction: pump SEAL replacements",
+      "tools": [
+        [
+          "count:Replace&seal"
+        ]
+      ],
+      "result": {
+        "pump_seal": 7
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "whole pumps separately",
+      "tools": [
+        [
+          "count:Replace&pump"
+        ]
+      ],
+      "result": {
+        "whole_pump": 23
+      },
+      "judge": false
+    }
+  ],
+  "WTB25": [
+    {
+      "type": "chat",
+      "intent": "constraint set: faults only; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "most common job (faults only)",
+      "tools": [
+        [
+          "filter:fault>top(activity,object)"
+        ]
+      ],
+      "result": {
+        "top_job": [
+          [
+            "Replace",
+            "Lines & drives"
+          ],
+          40
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "by equipment type",
+      "tools": [
+        [
+          "group:object@fault"
+        ]
+      ],
+      "result": {
+        "by_class": [
+          [
+            "GuidingObject",
+            107
+          ],
+          [
+            "HoldingObject",
+            82
+          ],
+          [
+            "ProtectingObject",
+            75
+          ],
+          [
+            "EmittingObject",
+            72
+          ],
+          [
+            "GeneratingObject",
+            68
+          ]
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB26": [
+    {
+      "type": "task",
+      "intent": "set A: failed",
+      "tools": [
+        [
+          "search:failed"
+        ]
+      ],
+      "result": {
+        "A": 211
+      },
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "set B: replace",
+      "tools": [
+        [
+          "search:replace"
+        ]
+      ],
+      "result": {
+        "B": 347
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "intersection (reactive replacements)",
+      "tools": [
+        [
+          "intersect:A,B"
+        ]
+      ],
+      "result": {
+        "both": 51
+      },
+      "judge": false
+    }
+  ],
+  "WTB27": [
+    {
+      "type": "task",
+      "intent": "anything on cooling",
+      "tools": [
+        [
+          "search:cooling"
+        ]
+      ],
+      "result": {
+        "n": 8
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "of those, failed",
+      "tools": [
+        [
+          "filter:failed@set"
+        ]
+      ],
+      "result": {
+        "failed": 0
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "remedies for those",
+      "tools": [
+        [
+          "remedy_dist@set"
+        ]
+      ],
+      "result": {
+        "remedies": {}
+      },
+      "judge": false
+    }
+  ],
+  "WTB28": [
+    {
+      "type": "task",
+      "intent": "leak remedies & crack remedies (parallel)",
+      "tools": [
+        [
+          "remedy:leak",
+          "remedy:crack"
+        ]
+      ],
+      "result": {
+        "leak": {
+          "Replace": 22,
+          "Inspect": 3,
+          "Repair": 15,
+          "Diagnose": 3
+        },
+        "crack": {
+          "Repair": 13
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "where differ most",
+      "tools": [
+        [
+          "compare"
+        ]
+      ],
+      "result": {
+        "max_diff_action": "Replace"
+      },
+      "judge": false
+    }
+  ],
+  "WTB29": [
+    {
+      "type": "task",
+      "intent": "top3 job signatures",
+      "tools": [
+        [
+          "scan>group:(obj,fault,act)>rank:3"
+        ]
+      ],
+      "result": {
+        "top3": [
+          [
+            [
+              "Engines & motors",
+              "(none)",
+              "Replace"
+            ],
+            66
+          ],
+          [
+            [
+              "Lines & drives",
+              "(none)",
+              "Replace"
+            ],
+            63
+          ],
+          [
+            [
+              "Pumps/fans/generators",
+              "(none)",
+              "Replace"
+            ],
+            42
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "#1 variant count",
+      "tools": [
+        [
+          "count_variants:#1"
+        ]
+      ],
+      "result": {
+        "sig1": [
+          "Engines & motors",
+          "(none)",
+          "Replace"
+        ]
+      },
+      "judge": true
+    }
+  ],
+  "WTB30": [
+    {
+      "type": "task",
+      "intent": "bearings replace vs repair",
+      "tools": [
+        [
+          "count:bR",
+          "count:bP"
+        ]
+      ],
+      "result": {
+        "bearing": {
+          "replace": 9,
+          "repair": 1
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "same for housings",
+      "tools": [
+        [
+          "count:hR",
+          "count:hP"
+        ]
+      ],
+      "result": {
+        "housing": {
+          "replace": 7,
+          "repair": 4
+        }
+      },
+      "judge": false
+    }
+  ],
+  "WTB31": [
+    {
+      "type": "task",
+      "intent": "total faults",
+      "tools": [
+        [
+          "count:fault"
+        ]
+      ],
+      "result": {
+        "n": 558
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "+protective gear",
+      "tools": [
+        [
+          "filter:ProtectingObject@set"
+        ]
+      ],
+      "result": {
+        "n": 75
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "+replaced",
+      "tools": [
+        [
+          "filter:Replace@set"
+        ]
+      ],
+      "result": {
+        "n": 3
+      },
+      "judge": false
+    }
+  ],
+  "WTB32": [
+    {
+      "type": "task",
+      "intent": "breakdown share of replacements",
+      "tools": [
+        [
+          "count:replace",
+          "count:replace&fault>ratio"
+        ]
+      ],
+      "result": {
+        "share": 0.27
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "branch: if>1/3 worst else 'fine'",
+      "tools": [
+        [
+          "select"
+        ]
+      ],
+      "result": {
+        "branch": "fine",
+        "worst": null
+      },
+      "judge": false
+    }
+  ],
+  "WTB33": [
+    {
+      "type": "task",
+      "intent": "which asset fails most (tags junk)",
+      "tools": [
+        [
+          "attempt:group:tag"
+        ]
+      ],
+      "result": {
+        "note": "tags unreliable"
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "pivot to text-class",
+      "tools": [
+        [
+          "group:object_class"
+        ]
+      ],
+      "result": {
+        "top": [
+          "Lines & drives",
+          107
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "its top mode",
+      "tools": [
+        [
+          "filter:top>group:fault>rank:1"
+        ]
+      ],
+      "result": {
+        "top_mode": "Failed/broken"
+      },
+      "judge": false
+    }
+  ],
+  "WTB34": [
+    {
+      "type": "task",
+      "intent": "replace counts by class desc",
+      "tools": [
+        [
+          "group:object>rank"
+        ]
+      ],
+      "result": {
+        "ranked": [
+          [
+            "Lines & drives",
+            89
+          ],
+          [
+            "Engines & motors",
+            44
+          ],
+          [
+            "Structural/mounting parts",
+            36
+          ],
+          [
+            "Pumps/fans/generators",
+            29
+          ],
+          [
+            "Valves/breakers/switches",
+            19
+          ],
+          [
+            "Sensors & gauges",
+            19
+          ],
+          [
+            "Transformers/gearboxes",
+            19
+          ],
+          [
+            "Filters & separators",
+            18
+          ],
+          [
+            "Guards & protective parts",
+            17
+          ],
+          [
+            "Covers & seals",
+            12
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "top3",
+      "tools": [
+        [
+          "index:1..3"
+        ]
+      ],
+      "result": {
+        "top3": [
+          [
+            "Lines & drives",
+            89
+          ],
+          [
+            "Engines & motors",
+            44
+          ],
+          [
+            "Structural/mounting parts",
+            36
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "#2 fault mix",
+      "tools": [
+        [
+          "filter:#2>group:fault"
+        ]
+      ],
+      "result": {
+        "second": "Engines & motors",
+        "fault_mix": {
+          "Active failure (leak/overheat)": 7,
+          "Failed/broken": 5
+        }
+      },
+      "judge": false
+    }
+  ],
+  "WTB35": [
+    {
+      "type": "task",
+      "intent": "most-failing: count & variety (parallel)",
+      "tools": [
+        [
+          "rank:count:1",
+          "rank:variety:1"
+        ]
+      ],
+      "result": {
+        "by_count": [
+          "Lines & drives",
+          107
+        ],
+        "by_variety": [
+          "Filters & separators",
+          5
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "clarify",
+      "intent": "choose variety; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "its modes",
+      "tools": [
+        [
+          "filter:variety_winner>list:fault"
+        ]
+      ],
+      "result": {
+        "modes": [
+          "Faulty",
+          "Active failure (leak/overheat)",
+          "Failed/broken",
+          "Worn/degraded",
+          "Defect (crack/hole/noise)"
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB36": [
+    {
+      "type": "task",
+      "intent": "inspect-then-fix same job",
+      "tools": [
+        [
+          "count:inspect&remedy"
+        ]
+      ],
+      "result": {
+        "n": 7
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "on what equipment most",
+      "tools": [
+        [
+          "group:object@set>rank:1"
+        ]
+      ],
+      "result": {
+        "top": [
+          "Guards & protective parts",
+          3
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB37": [
+    {
+      "type": "task",
+      "intent": "overall reactive vs proactive",
+      "tools": [
+        [
+          "count:reactive",
+          "count:proactive"
+        ]
+      ],
+      "result": {
+        "reactive": 83,
+        "proactive": 146
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "per equipment type",
+      "tools": [
+        [
+          "group:object"
+        ]
+      ],
+      "result": {
+        "per_class": [
+          [
+            "Valves/breakers/switches",
+            0.92
+          ],
+          [
+            "Sensors & gauges",
+            0.8
+          ],
+          [
+            "Lines & drives",
+            0.7
+          ],
+          [
+            "Covers & seals",
+            0.67
+          ],
+          [
+            "Displays & alarms",
+            0.5
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "most reactive type",
+      "tools": [
+        [
+          "argmax:share"
+        ]
+      ],
+      "result": {
+        "most_reactive": [
+          "Valves/breakers/switches",
+          0.92
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB38": [
+    {
+      "type": "task",
+      "intent": "jobs mentioning a number",
+      "tools": [
+        [
+          "search:number"
+        ]
+      ],
+      "result": {
+        "raw": "ambiguous"
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "mean <num> placeholders; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "fraction of all",
+      "tools": [
+        [
+          "count:placeholder>ratio"
+        ]
+      ],
+      "result": {
+        "placeholder_WOs": 126,
+        "pct": 11.7
+      },
+      "judge": false
+    }
+  ],
+  "WTB39": [
+    {
+      "type": "task",
+      "intent": "top wear items by replacement (parallel)",
+      "tools": [
+        [
+          "count:bearing",
+          "count:seal",
+          "count:belt",
+          "count:filter"
+        ]
+      ],
+      "result": {
+        "counts": {
+          "bearing": 9,
+          "seal": 7,
+          "belt": 56,
+          "filter": 12
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "unplanned vs plannable",
+      "tools": [
+        [
+          "split:failed@4"
+        ]
+      ],
+      "result": {
+        "unplanned": {
+          "bearing": 0,
+          "seal": 1,
+          "belt": 15,
+          "filter": 2
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "unplanned only, ranked",
+      "tools": [
+        [
+          "rank:unplanned"
+        ]
+      ],
+      "result": {
+        "ranked": [
+          [
+            "belt",
+            15
+          ],
+          [
+            "filter",
+            2
+          ],
+          [
+            "seal",
+            1
+          ],
+          [
+            "bearing",
+            0
+          ]
+        ]
+      },
+      "judge": false
+    }
+  ],
+  "WTB40": [
+    {
+      "type": "task",
+      "intent": "failure-mode pareto",
+      "tools": [
+        [
+          "group:fault>rank"
+        ]
+      ],
+      "result": {
+        "pareto": [
+          [
+            "Failed/broken",
+            215
+          ],
+          [
+            "Faulty",
+            178
+          ],
+          [
+            "Active failure (leak/overheat)",
+            146
+          ],
+          [
+            "Worn/degraded",
+            45
+          ],
+          [
+            "Defect (crack/hole/noise)",
+            32
+          ]
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "pivot: redo for components",
+      "tools": [
+        [
+          "group:object>rank"
+        ]
+      ],
+      "result": {
+        "top_component": [
+          "Lines & drives",
+          107
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "top one mostly outright failure?",
+      "tools": [
+        [
+          "filter:top>failed_share"
+        ]
+      ],
+      "result": {
+        "failed_share": 0.47
+      },
+      "judge": false
+    }
+  ],
+  "WTB41": [
+    {
+      "type": "task",
+      "intent": "replace by class & class by activity (parallel)",
+      "tools": [
+        [
+          "group:object",
+          "group:activity"
+        ]
+      ],
+      "result": {
+        "replace_total": 349,
+        "activity_replace": 349
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "reconcile",
+      "tools": [
+        [
+          "assert_equal"
+        ]
+      ],
+      "result": {
+        "reconciles": true
+      },
+      "judge": false
+    }
+  ],
+  "WTB42": [
+    {
+      "type": "chat",
+      "intent": "scope: mobile fleet only; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "most-replaced component (overall; no mobile/fixed field)",
+      "tools": [
+        [
+          "rank:replace:1"
+        ]
+      ],
+      "result": {
+        "top": [
+          [
+            "Lines & drives",
+            89
+          ]
+        ]
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "confirm cannot split mobile/fixed; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    }
+  ],
+  "WTB43": [
+    {
+      "type": "task",
+      "intent": "worst component",
+      "tools": [
+        [
+          "rank:fault_class:1"
+        ]
+      ],
+      "result": {
+        "worst": [
+          "Lines & drives",
+          107
+        ]
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "its worst fault",
+      "tools": [
+        [
+          "filter:top>group:fault>rank:1"
+        ]
+      ],
+      "result": {
+        "worst_fault": "Failed/broken"
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "most-skewed fix for that fault",
+      "tools": [
+        [
+          "filter:fault>remedy>argmax_share"
+        ]
+      ],
+      "result": {
+        "fix": "Replace",
+        "share": 0.93
+      },
+      "judge": false
+    }
+  ],
+  "WTB44": [
+    {
+      "type": "task",
+      "intent": "diagnose-only count",
+      "tools": [
+        [
+          "count:diagnose_only"
+        ]
+      ],
+      "result": {
+        "diagnose_only": 18
+      },
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "replace-without-diagnosis count",
+      "tools": [
+        [
+          "count:replace_no_diag"
+        ]
+      ],
+      "result": {
+        "replace_no_diag": 51
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "interpret the gap (RCA habit)",
+      "tools": [
+        [
+          "synthesise"
+        ]
+      ],
+      "result": {
+        "gap": 33
+      },
+      "judge": true
+    }
+  ],
+  "WTB45": [
+    {
+      "type": "task",
+      "intent": "usual fix when a sensor plays up",
+      "tools": [
+        [
+          "filter:sensor_fault>remedy>argmax"
+        ]
+      ],
+      "result": {
+        "usual": "Replace"
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "when fully failed, does it change",
+      "tools": [
+        [
+          "filter:sensor_failed>remedy>argmax"
+        ]
+      ],
+      "result": {
+        "when_failed": "Replace"
+      },
+      "judge": false
+    }
+  ],
+  "WTB46": [
+    {
+      "type": "task",
+      "intent": "dominant remedy for seized/leaking/cracked (parallel)",
+      "tools": [
+        [
+          "remedy:seized",
+          "remedy:leaking",
+          "remedy:cracked"
+        ]
+      ],
+      "result": {
+        "dominant": {
+          "seized": "Replace",
+          "leaking": "Replace",
+          "cracked": "Repair"
+        }
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "most 'just replace it' fault",
+      "tools": [
+        [
+          "argmax:replace_share"
+        ]
+      ],
+      "result": {
+        "most_replace": "seized",
+        "share": 0.88
+      },
+      "judge": false
+    }
+  ],
+  "WTB47": [
+    {
+      "type": "task",
+      "intent": "most common job on valves",
+      "tools": [
+        [
+          "filter:valve>activity>rank:1"
+        ]
+      ],
+      "result": {
+        "valve_top": "Replace"
+      },
+      "judge": false
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "task",
+      "intent": "jobs with no object (distractor)",
+      "tools": [
+        [
+          "count:no_object"
+        ]
+      ],
+      "result": {
+        "no_object": 30
+      },
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "back to valves: 2nd most common",
+      "tools": [
+        [
+          "index:2@valve"
+        ]
+      ],
+      "result": {
+        "valve_second": "Repair"
+      },
+      "judge": false
+    }
+  ],
+  "WTB48": [
+    {
+      "type": "task",
+      "intent": "trend over time (no date field)",
+      "tools": [
+        [
+          "attempt:trend"
+        ]
+      ],
+      "result": {
+        "date_field": "absent"
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "fallback authorised: static breakdown; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "static failure-mode breakdown + flag top",
+      "tools": [
+        [
+          "group:fault>rank>flag:1"
+        ]
+      ],
+      "result": {
+        "breakdown": [
+          [
+            "Failed/broken",
+            215
+          ],
+          [
+            "Faulty",
+            178
+          ],
+          [
+            "Active failure (leak/overheat)",
+            146
+          ],
+          [
+            "Worn/degraded",
+            45
+          ],
+          [
+            "Defect (crack/hole/noise)",
+            32
+          ]
+        ],
+        "top": "Failed/broken"
+      },
+      "judge": false
+    }
+  ],
+  "WTB49": [
+    {
+      "type": "task",
+      "intent": "one-line reliability headline",
+      "tools": [
+        [
+          "compose:top_class+mode+reactive%"
+        ]
+      ],
+      "result": {
+        "top": "Lines & drives",
+        "mode": "Failed/broken",
+        "reactive_pct": 35.7
+      },
+      "judge": true
+    },
+    {
+      "type": "follow",
+      "intent": "critique its weakest assumption",
+      "tools": [
+        [
+          "reflect"
+        ]
+      ],
+      "result": {
+        "caveat": "no time/cost/asset identity in data"
+      },
+      "judge": true
+    },
+    {
+      "type": "chat",
+      "intent": "no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    }
+  ],
+  "WTB50": [
+    {
+      "type": "task",
+      "intent": "single most important action (open)",
+      "tools": [
+        [
+          "scan"
+        ]
+      ],
+      "result": {
+        "await_metric": true
+      },
+      "judge": true
+    },
+    {
+      "type": "clarify",
+      "intent": "metric=failure burden; no tool",
+      "tools": [],
+      "result": null,
+      "judge": false
+    },
+    {
+      "type": "follow",
+      "intent": "component+evidence+one task",
+      "tools": [
+        [
+          "rank:burden:1>compose"
+        ]
+      ],
+      "result": {
+        "target": "Lines & drives",
+        "fault_WOs": 107,
+        "failed_share": 0.47
+      },
+      "judge": true
+    }
+  ]
+}

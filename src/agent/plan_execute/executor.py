@@ -29,6 +29,7 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
     "fmsr": "fmsr-mcp-server",
     "tsfm": "tsfm-mcp-server",
     "wo": "wo-mcp-server",
+    "maintie": "maintie-mcp-server",
     # "vibration": "vibration-mcp-server",
     # vibration server excluded: database only contains Motor_01 test data,
     # no vibration sensors exist for the chiller assets used in production.
@@ -59,6 +60,7 @@ Consistency rules — when the same tool is called for multiple assets in parall
 - target_columns: use the SAME column(s) for every asset. If the question is about temperature, use only the Supply Temperature column for every asset — do NOT pass all sensors for one asset and one sensor for another.
 - false_alarm: use the SAME value across all parallel TSAD steps (default 0.05 unless the question requires a different threshold).
 - start / final date range: use the SAME start and final for every asset so the time windows are comparable.
+- MaintIE replaced-component/object rankings: set patient_of_activity to "Replace". A replaced component is the object linked as the Replace activity's patient, not every object that merely co-occurs in that work order.
 
 JSON:"""
 
@@ -70,8 +72,10 @@ class Executor:
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        reference_date: str | None = None,
     ) -> None:
         self._llm = llm
+        self._reference_date = reference_date
         self._server_paths = (
             DEFAULT_SERVER_PATHS if server_paths is None else server_paths
         )
@@ -103,13 +107,27 @@ class Executor:
         """Execute all plan steps in dependency order."""
         ordered = plan.resolved_order()
         executable_steps: list[PlanStep] = []
-        # ignore invalid plan steps (e.g. server="none")
+        invalid_results: list[StepResult] = []
         for step in ordered:
             if step.server not in self._server_paths:
-                _log.info(
-                    "Skipping step %d [%s]: unknown server.",
+                _log.warning(
+                    "Step %d [%s] failed: unknown server.",
                     step.step_number,
                     step.server,
+                )
+                invalid_results.append(
+                    StepResult(
+                        step_number=step.step_number,
+                        task=step.task,
+                        server=step.server,
+                        response="",
+                        error=(
+                            f"Unknown server '{step.server}'. "
+                            f"Registered servers: {list(self._server_paths)}"
+                        ),
+                        tool=step.tool,
+                        tool_args=step.tool_args,
+                    )
                 )
                 continue
             executable_steps.append(step)
@@ -133,7 +151,9 @@ class Executor:
                 tool_schemas[name] = {}
 
         context: dict[int, StepResult] = dict(prior_context) if prior_context else {}
-        results: list[StepResult] = []
+        for result in invalid_results:
+            context[result.step_number] = result
+        results: list[StepResult] = list(invalid_results)
         for step in executable_steps:
             failed_deps = [
                 d for d in step.dependencies
@@ -174,7 +194,7 @@ class Executor:
                 _log.warning("Step %d FAILED: %s", step.step_number, result.error)
             context[step.step_number] = result
             results.append(result)
-        return results
+        return sorted(results, key=lambda result: result.step_number)
 
     async def execute_step(
         self,
@@ -216,7 +236,13 @@ class Executor:
         try:
             _log.info("Step %d: calling LLM to resolve args.", step.step_number)
             resolved_args = await _resolve_args_with_llm(
-                question, step.task, step.tool, tool_schema, context, self._llm
+                question,
+                step.task,
+                step.tool,
+                tool_schema,
+                context,
+                self._llm,
+                reference_date=self._reference_date,
             )
 
             response = await _call_tool(server_path, step.tool, resolved_args)
@@ -274,6 +300,7 @@ async def _resolve_args_with_llm(
     tool_schema: str,
     context: dict[int, StepResult],
     llm: LLMBackend,
+    reference_date: str | None = None,
 ) -> dict:
     """Generate tool arguments from the task description and prior step results."""
     from datetime import date
@@ -292,7 +319,7 @@ async def _resolve_args_with_llm(
         .replace("{tool}", tool)
         .replace("{tool_schema}", tool_schema or "(unknown)")
         .replace("{context}", context_text or "(none)")
-        .replace("{today}", date.today().isoformat())
+        .replace("{today}", reference_date or date.today().isoformat())
     )
     raw = llm.generate(prompt)
     resolved = _parse_json(raw)

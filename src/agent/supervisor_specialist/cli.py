@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import os
 import sys
+from pathlib import Path
 
 _DEFAULT_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 
@@ -64,7 +65,33 @@ def _build_parser() -> argparse.ArgumentParser:
             "coverage guards."
         ),
     )
+    p.add_argument(
+        "--server",
+        action="append",
+        default=[],
+        dest="servers",
+        metavar="NAME=PATH",
+        help=(
+            "Register an MCP server as NAME=PATH. Repeating this option "
+            "overrides the default server set."
+        ),
+    )
     return p
+
+
+def _parse_servers(entries: list[str]) -> dict[str, Path | str] | None:
+    if not entries:
+        return None
+    result: dict[str, Path | str] = {}
+    for entry in entries:
+        if "=" not in entry:
+            raise ValueError(f"--server requires NAME=PATH, got {entry!r}")
+        name, value = entry.split("=", 1)
+        name, value = name.strip(), value.strip()
+        if not name or not value:
+            raise ValueError(f"--server requires NAME=PATH, got {entry!r}")
+        result[name] = value if "/" not in value and "\\" not in value else Path(value)
+    return result
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -81,6 +108,11 @@ async def _run(args: argparse.Namespace) -> None:
         import pathlib
         log_dir = pathlib.Path(tempfile.mkdtemp(prefix="ss_nolog_"))
 
+    try:
+        server_paths = _parse_servers(getattr(args, "servers", []))
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
     runner = SupervisorSpecialistRunner(
         llm=llm,
         max_steps=args.max_steps,
@@ -88,6 +120,7 @@ async def _run(args: argparse.Namespace) -> None:
         log_dir=log_dir,
         reference_date=args.reference_date,
         parallel=args.parallel,
+        server_paths=server_paths,
     )
 
     if not args.multi_turn:

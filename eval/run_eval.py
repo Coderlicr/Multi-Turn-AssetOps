@@ -1,8 +1,8 @@
 """
-Profiling harness for the supervisor-specialist system.
+Evaluation and profiling harness for all three system architectures.
 
-Drives each dialog scenario from scenarios.py through the supervisor-specialist
-CLI, captures per-turn responses and timing, and writes structured results.
+Drives each dialog scenario from scenarios.py through the selected CLI, captures
+per-turn responses and timing, and writes structured results.
 
 Usage:
     # Run all 16 dialogs
@@ -11,8 +11,10 @@ Usage:
     # Run specific dialogs
     uv run python eval/run_eval.py --dialogs 1 4 6
 
-    # Tag the system being profiled (for WandB run grouping)
-    uv run python eval/run_eval.py --system supervisor-specialist --dialogs 6
+    # Select a real architecture
+    uv run python eval/run_eval.py --architecture plan-execute --dialogs 6
+    uv run python eval/run_eval.py --architecture supervisor-specialist --dialogs 6
+    uv run python eval/run_eval.py --architecture supervisor-specialist-parallel --dialogs 6
 
     # Override model or output directory
     uv run python eval/run_eval.py --model-id watsonx/meta-llama/llama-4-...
@@ -62,6 +64,12 @@ PROFILE_ENV_KEYS = (
     "LANGCHAIN_PROJECT",
     "WANDB_API_KEY",
     "WANDB_PROJECT",
+)
+
+ARCHITECTURES = (
+    "plan-execute",
+    "supervisor-specialist",
+    "supervisor-specialist-parallel",
 )
 
 
@@ -442,10 +450,65 @@ async def _read_until_prompt(reader: asyncio.StreamReader, timeout: float) -> st
 
 # ── per-dialog runner ─────────────────────────────────────────────────────────
 
+def _resolve_entrypoint(name: str) -> str:
+    executable = shutil.which(name)
+    if executable is None:
+        candidate = REPO_ROOT / ".venv" / "bin" / name
+        if candidate.exists():
+            executable = str(candidate)
+    if executable is None:
+        raise RuntimeError(
+            f"{name} not found in PATH or .venv/bin. Run `uv sync` first."
+        )
+    return executable
+
+
+def _build_agent_command(
+    architecture: str,
+    first_turn: str,
+    reference_date: str,
+    model_id: Optional[str],
+    agent_log_path: pathlib.Path,
+    server_specs: Optional[list[str]] = None,
+) -> list[str]:
+    """Build the actual CLI command for one of the three architectures."""
+    if architecture not in ARCHITECTURES:
+        raise ValueError(f"Unknown architecture: {architecture}")
+
+    if architecture == "plan-execute":
+        cmd = [
+            _resolve_entrypoint("plan-execute"),
+            "--multi-turn",
+            "--show-plan",
+            "--show-history",
+            "--save-output",
+            str(agent_log_path),
+            "--reference-date",
+            reference_date,
+        ]
+    else:
+        cmd = [
+            _resolve_entrypoint("supervisor-specialist"),
+            "--multi-turn",
+            "--no-stream",
+            "--reference-date",
+            reference_date,
+        ]
+        if architecture == "supervisor-specialist-parallel":
+            cmd.append("--parallel")
+
+    if model_id:
+        cmd.extend(["--model-id", model_id])
+    for server_spec in server_specs or []:
+        cmd.extend(["--server", server_spec])
+    cmd.append(first_turn)
+    return cmd
+
 async def run_dialog(
     scenario: dict,
     output_dir: pathlib.Path,
     model_id: Optional[str],
+    architecture: str,
     verbose: bool,
 ) -> tuple[dict, dict]:
     """Run one dialog. Returns (result_record, llm_metrics)."""
@@ -458,34 +521,29 @@ async def run_dialog(
     print(f"  {len(turns)} turns  |  reference date: {ref_date}")
     print(f"{'─'*70}")
 
-    ss_cmd = shutil.which("supervisor-specialist")
-    if ss_cmd is None:
-        venv_bin = REPO_ROOT / ".venv" / "bin" / "supervisor-specialist"
-        if venv_bin.exists():
-            ss_cmd = str(venv_bin)
-    if ss_cmd is None:
-        raise RuntimeError(
-            "supervisor-specialist not found in PATH or .venv/bin/. Run `uv sync` first."
-        )
-
-    cmd: list[str] = [
-        ss_cmd,
-        "--multi-turn",
-        "--no-stream",
-        "--reference-date", ref_date,
-        turns[0],
-    ]
-    if model_id:
-        cmd.extend(["--model-id", model_id])
-
     stderr_path = output_dir / f"dialog_{dialog_id:02d}_stderr.txt"
     metrics_path = output_dir / f"dialog_{dialog_id:02d}_llm_metrics.jsonl"
+    agent_log_path = output_dir / f"dialog_{dialog_id:02d}_agent.jsonl"
+    cmd = _build_agent_command(
+        architecture,
+        turns[0],
+        ref_date,
+        model_id,
+        agent_log_path,
+        server_specs=(
+            ["maintie=maintie-mcp-server"]
+            if scenario["category"] == "wtb50"
+            else None
+        ),
+    )
 
     # Pass metrics file path while keeping WandB output out of MCP stdio.
     child_env = _make_child_env(metrics_path)
 
     result: dict = {
         "dialog_id": dialog_id,
+        "scenario_id": scenario.get("scenario_id"),
+        "architecture": architecture,
         "title": scenario["title"],
         "category": scenario["category"],
         "reference_date": ref_date,
@@ -497,11 +555,20 @@ async def run_dialog(
         "turns": [],
         "llm_metrics": None,
         "behavior_log": None,
+        "agent_log": (
+            str(agent_log_path.relative_to(REPO_ROOT))
+            if architecture == "plan-execute"
+            else None
+        ),
         "stderr_file": str(stderr_path.relative_to(REPO_ROOT)),
         "llm_metrics_file": str(metrics_path.relative_to(REPO_ROOT)),
     }
 
-    existing_logs = set(BEHAVIOR_LOG_DIR.glob("case_*.jsonl"))
+    existing_logs = (
+        set(BEHAVIOR_LOG_DIR.glob("case_*.jsonl"))
+        if architecture != "plan-execute"
+        else set()
+    )
     dialog_start = time.monotonic()
 
     try:
@@ -588,7 +655,11 @@ async def run_dialog(
     result["duration_seconds"] = total
     result["completed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    new_logs = set(BEHAVIOR_LOG_DIR.glob("case_*.jsonl")) - existing_logs
+    new_logs = (
+        set(BEHAVIOR_LOG_DIR.glob("case_*.jsonl")) - existing_logs
+        if architecture != "plan-execute"
+        else set()
+    )
     if new_logs:
         newest = max(new_logs, key=lambda p: p.stat().st_mtime)
         result["behavior_log"] = str(newest.relative_to(REPO_ROOT))
@@ -614,7 +685,7 @@ async def run_all(
     output_dir: pathlib.Path,
     model_id: Optional[str],
     dialog_ids: Optional[list[int]],
-    system: str,
+    architecture: str,
     verbose: bool,
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -627,11 +698,11 @@ async def run_all(
 
     run_id = f"run_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     print(f"\nEval run : {run_id}")
-    print(f"System   : {system}")
+    print(f"Architecture: {architecture}")
     print(f"Output   : {output_dir}")
     print(f"Dialogs  : {[s['id'] for s in scenarios]}")
 
-    wandb = _wandb_init(run_id, system, dialog_ids)
+    wandb = _wandb_init(run_id, architecture, dialog_ids)
 
     all_results: list[dict] = []
     all_llm_metrics: list[dict] = []
@@ -642,7 +713,7 @@ async def run_all(
     for scenario in scenarios:
         try:
             result, llm_metrics = await asyncio.wait_for(
-                run_dialog(scenario, output_dir, model_id, verbose),
+                run_dialog(scenario, output_dir, model_id, architecture, verbose),
                 timeout=PER_DIALOG_TIMEOUT,
             )
         except asyncio.TimeoutError:
@@ -703,7 +774,7 @@ async def run_all(
 
     summary = {
         "run_id": run_id,
-        "system": system,
+        "architecture": architecture,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "total_dialogs": len(all_results),
         **counts,
@@ -733,7 +804,7 @@ async def run_all(
     summary_file.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
 
     print(f"\n{'='*70}")
-    print(f"Run complete : {run_id}  [{system}]")
+    print(f"Run complete : {run_id}  [{architecture}]")
     print(f"  Completed  : {counts['completed']}/{len(all_results)}")
     print(f"  Crashed    : {counts['crashed']}")
     print(f"  Timed out  : {counts['timed_out']}")
@@ -755,9 +826,19 @@ def main() -> None:
         epilog=__doc__,
     )
     parser.add_argument("--dialogs", nargs="+", type=int, metavar="N",
-                        help="Dialog IDs to run (default: all 16).")
-    parser.add_argument("--system", default="supervisor-specialist",
-                        help="System name tag for WandB grouping (default: supervisor-specialist).")
+                        help="Dialog IDs to run (default: every dialog in the selected suite).")
+    parser.add_argument(
+        "--suite",
+        choices=("assetops16", "wtb50"),
+        default="assetops16",
+        help="Evaluation suite. wtb50 uses only the real MaintIE MCP server.",
+    )
+    parser.add_argument(
+        "--architecture",
+        choices=ARCHITECTURES,
+        default="supervisor-specialist",
+        help="Architecture to execute, not merely a result label.",
+    )
     parser.add_argument("--model-id", default=None,
                         help="Override LiteLLM model ID.")
     parser.add_argument("--output-dir", default=None,
@@ -767,14 +848,37 @@ def main() -> None:
     args = parser.parse_args()
 
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
-    from scenarios import SCENARIOS
+    if args.suite == "wtb50":
+        from wtb_scenarios import WTB_SCENARIOS
+
+        scenarios = WTB_SCENARIOS
+        model_id = args.model_id or "deepseek/deepseek-v4-flash"
+    else:
+        from scenarios import SCENARIOS
+
+        scenarios = SCENARIOS
+        model_id = args.model_id
 
     out_dir = (
         pathlib.Path(args.output_dir) if args.output_dir
-        else EVAL_OUT_ROOT / datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        else EVAL_OUT_ROOT / (
+            f"{args.suite}__{args.architecture}__"
+            + datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+        )
     )
+    if not out_dir.is_absolute():
+        out_dir = REPO_ROOT / out_dir
 
-    asyncio.run(run_all(SCENARIOS, out_dir, args.model_id, args.dialogs, args.system, args.verbose))
+    asyncio.run(
+        run_all(
+            scenarios,
+            out_dir,
+            model_id,
+            args.dialogs,
+            args.architecture,
+            args.verbose,
+        )
+    )
 
 
 if __name__ == "__main__":

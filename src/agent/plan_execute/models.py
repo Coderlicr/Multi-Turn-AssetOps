@@ -25,6 +25,7 @@ class Plan:
 
     steps: list[PlanStep]
     raw: str  # Raw LLM output, preserved for debugging
+    direct_answer: str | None = None
 
     def get_step(self, number: int) -> Optional[PlanStep]:
         return next((s for s in self.steps if s.step_number == number), None)

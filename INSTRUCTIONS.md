@@ -13,6 +13,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
   - [fmsr](#fmsr)
   - [tsfm](#tsfm)
   - [wo](#wo)
+  - [maintie](#maintie--annotated-work-order-corpus)
   - [vibration](#vibration)
 - [Plan-Execute Runner](#plan-execute-runner)
   - [How it works](#how-it-works)
@@ -96,6 +97,7 @@ uv run iot-mcp-server
 uv run fmsr-mcp-server
 uv run tsfm-mcp-server
 uv run wo-mcp-server
+uv run maintie-mcp-server
 uv run vibration-mcp-server
 ```
 
@@ -128,6 +130,15 @@ uv run vibration-mcp-server
 | ------------------ | ------------ | -------------------------------------------------------------------- |
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
+
+**DeepSeek** — runners whose model starts with `deepseek/`
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `DEEPSEEK_API_KEY` | _(required)_ | DeepSeek-compatible API key |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Optional compatible endpoint override |
+| `DEEPSEEK_THINKING` | `disabled` | OpenAI-format thinking switch: `enabled` or `disabled` |
+| `DEEPSEEK_REASONING_EFFORT` | `high` | Used only when thinking is enabled: `low`, `high`, or `max` |
 
 **Supervisor-Specialist** — optional runtime controls
 
@@ -221,6 +232,35 @@ uv run python eval/run_eval.py --system supervisor-specialist --dialogs 6
 | `get_work_order_distribution` | `equipment_id`, `start_date?`, `end_date?`            | Count work orders per (primary, secondary) failure code pair, sorted by frequency        |
 | `predict_next_work_order`     | `equipment_id`, `start_date?`, `end_date?`            | Predict next work order type via Markov transition matrix built from historical sequence |
 | `analyze_alert_to_failure`    | `equipment_id`, `rule_id`, `start_date?`, `end_date?` | Probability that an alert rule leads to a work order; average hours to maintenance       |
+
+### maintie — Annotated Work-Order Corpus
+
+**Path:** `src/servers/maintie/main.py`
+**Requires:** nothing external; reads the official MaintIE gold release bundled in
+`src/servers/maintie/data/`. The source repository, pinned commit, and upstream
+license are recorded in `SOURCE.md` and `LICENSE.upstream.md`.
+
+| Tool | Purpose |
+| ---- | ------- |
+| `search` | Find work orders and return stable IDs that can be reused across turns |
+| `extract` | Return normalized annotations for selected IDs |
+| `count` | Count work orders or distinct object ontology types |
+| `group_count` | Group by activity, object class/type, failure mode, or job signature |
+| `rank` | Rank the same dimensions without a separate sorting call |
+| `get_text` | Inspect the original text and annotations for one work order |
+| `compare` | Compare named subsets using the same deterministic metrics |
+
+For the 50-scenario experiment, all three architectures are launched through
+the same command shape and receive only this server:
+
+```bash
+uv run python eval/run_eval.py --suite wtb50 \
+  --architecture plan-execute --dialogs 1 \
+  --model-id deepseek/deepseek-v4-flash
+```
+
+Replace `plan-execute` with `supervisor-specialist` or
+`supervisor-specialist-parallel` for the other two conditions.
 
 ### tsfm — Time Series Foundation Model
 

@@ -23,7 +23,10 @@ class DataCollectionSpecialist(SpecialistAgent):
         "- If iot.assets returns multiple assets and the goal does not name a specific asset, "
         "collect data for ALL returned assets before marking done — do not stop after the first one\n"
         "- After calling iot.history_csv for an asset, always call utilities.csv_stats on the "
-        "returned csv_path to obtain column statistics before moving to the next asset"
+        "returned csv_path to obtain column statistics before moving to the next asset\n"
+        "- For MaintIE corpus questions, use only maintie.* tools. Reuse wo_ids with "
+        "within_ids on follow-up turns; patient_of_activity='Replace' gives exact "
+        "replaced-component relation counts"
     )
     allowed_tools = {
         "iot.sites",
@@ -41,6 +44,13 @@ class DataCollectionSpecialist(SpecialistAgent):
         "utilities.json_reader",
         "utilities.current_date_time",
         "utilities.current_time_english",
+        "maintie.search",
+        "maintie.extract",
+        "maintie.count",
+        "maintie.group_count",
+        "maintie.rank",
+        "maintie.get_text",
+        "maintie.compare",
     }
 
     async def _postprocess_tool_results(

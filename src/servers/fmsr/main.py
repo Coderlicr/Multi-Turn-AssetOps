@@ -9,7 +9,9 @@ For any other asset type the LLM is queried as a fallback.
 
 The mapping tool uses a two-tier lookup:
   1. Offline cache (sensor_mappings.yaml) — instant, no LLM call
-  2. LLM per-pair fallback for any cache miss — results written back to cache
+  2. LLM per-pair fallback for any cache miss — retained in memory for this run
+
+Set FMSR_RUNTIME_CACHE_FILE to persist generated mappings outside the source tree.
 
 LLM backend is configured via the FMSR_MODEL_ID environment variable
 (default: ``watsonx/meta-llama/llama-3-3-70b-instruct``).  Any model string
@@ -49,6 +51,11 @@ with _FAILURE_MODES_FILE.open() as _f:
     _ASSET_FAILURE_MODES: dict[str, list[str]] = yaml.safe_load(_f)
 
 _SENSOR_MAPPINGS_FILE = Path(__file__).parent / "sensor_mappings.yaml"
+_RUNTIME_CACHE_FILE = (
+    Path(os.environ["FMSR_RUNTIME_CACHE_FILE"])
+    if os.environ.get("FMSR_RUNTIME_CACHE_FILE")
+    else None
+)
 _cache_lock = threading.Lock()
 
 
@@ -90,16 +97,23 @@ def _cache_get(asset_type: str, failure_mode: str, sensor_key: str) -> dict | No
 
 
 def _cache_set(asset_type: str, failure_mode: str, sensor_key: str, result: dict) -> None:
-    """Write one result to in-memory cache and persist to YAML (thread-safe)."""
+    """Write one result to memory and optionally to an external runtime cache."""
     with _cache_lock:
         _SENSOR_MAPPING_CACHE \
             .setdefault(asset_type, {}) \
             .setdefault(failure_mode, {})[sensor_key] = result
-        try:
-            with _SENSOR_MAPPINGS_FILE.open("w") as f:
-                yaml.dump(_SENSOR_MAPPING_CACHE, f, allow_unicode=True, default_flow_style=False)
-        except Exception as exc:
-            logger.warning("Failed to persist sensor_mappings.yaml: %s", exc)
+        if _RUNTIME_CACHE_FILE is not None:
+            try:
+                _RUNTIME_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with _RUNTIME_CACHE_FILE.open("w") as f:
+                    yaml.dump(
+                        _SENSOR_MAPPING_CACHE,
+                        f,
+                        allow_unicode=True,
+                        default_flow_style=False,
+                    )
+            except Exception as exc:
+                logger.warning("Failed to persist FMSR runtime cache: %s", exc)
 
 
 # ── Prompt templates ──────────────────────────────────────────────────────────
@@ -160,6 +174,9 @@ def _build_llm():
         missing = [v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)]
         if missing:
             raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
+    elif model_id.startswith("deepseek/"):
+        if not os.environ.get("DEEPSEEK_API_KEY"):
+            raise RuntimeError("Missing env var for DeepSeek: DEEPSEEK_API_KEY")
     else:
         missing = [v for v in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(v)]
         if missing:
@@ -279,8 +296,8 @@ def get_failure_mode_sensor_mapping(
     the failure. Returns a bidirectional mapping (fm→sensors, sensor→fms) plus
     the full per-pair relevancy details.
 
-    Results are cached in sensor_mappings.yaml — cache hits are instant.
-    Cache misses fall back to parallel LLM calls and are written back to cache.
+    Curated sensor_mappings.yaml cache hits are instant. Cache misses fall back
+    to parallel LLM calls and remain in memory unless FMSR_RUNTIME_CACHE_FILE is set.
     Keep both lists small (e.g. ≤5 failure modes, ≤10 sensors) for best results."""
     if not asset_name:
         return ErrorResult(error="asset_name is required")
