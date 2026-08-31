@@ -44,19 +44,14 @@ def parse_json_from_llm(raw: str) -> dict | None:
 
 
 def format_tool_schemas_for_prompt(tool_schemas: list[dict]) -> str:
-    """Format a list of tool schema dicts into a human-readable string for LLM prompts."""
+    """Render complete MCP schemas without dropping nested filter contracts."""
     lines = []
     for t in tool_schemas:
         name = t.get("name", "")
         description = t.get("description", "")
         schema = t.get("input_schema", {})
-        props = schema.get("properties", {})
-        required_set = set(schema.get("required", []))
-        params = ", ".join(
-            f"{k}: {v.get('type', 'any')}{'?' if k not in required_set else ''}"
-            for k, v in props.items()
-        )
-        lines.append(f"- {name}({params}): {description}")
+        rendered = json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True)
+        lines.append(f"### {name}\n{description}\nInput JSON Schema:\n{rendered}")
     return "\n".join(lines) if lines else "(no tools available)"
 
 

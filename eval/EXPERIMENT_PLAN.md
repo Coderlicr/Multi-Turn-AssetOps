@@ -63,6 +63,7 @@ Pilot 只用于发现工程和评分问题，不进入论文主结果。
 - [x] Plan-Execute 支持固定 reference date。
 - [x] 50场景可加载，50个对话、152轮对齐。
 - [x] WTB评分器会处罚缺失轮和额外轮。
+- [x] WTB 的 OPR 只计 7 个真实 MaintIE 工具；抽象推理步骤不算工具调用，等价路径显式列入白名单。
 - [x] 运行时缓存不修改源码。
 - [x] 全套测试通过。
 - [x] CouchDB 与三类数据已初始化。
@@ -71,7 +72,8 @@ Pilot 只用于发现工程和评分问题，不进入论文主结果。
 - [x] WTB50 统一入口只暴露 MaintIE server，三种架构工具条件一致。
 - [x] DeepSeek 单次 API smoke test 通过；按官方 OpenAI 格式关闭 thinking。
 - [x] 三架构 WTB01 smoke test 通过（均为4/4轮，无 API/MCP 错误）。
-- [ ] Pilot 通过并冻结 prompt。
+- [x] Supervisor 两个变体的 WTB01/03/15 pilot 通过：11/11 轮完成，APR 9/9，OPR 10/11 与 11/11，WTB15 为 107→40→24。
+- [ ] 冻结当前代码、prompt 和评分器后开始正式实验。
 
 ## 命令
 

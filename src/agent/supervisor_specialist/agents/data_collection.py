@@ -58,6 +58,8 @@ class DataCollectionSpecialist(SpecialistAgent):
         task: TaskEnvelope,
         input_artifacts: list[ArtifactEnvelope],
         results: list[ToolCallResult],
+        *,
+        max_tool_calls: int,
     ) -> list[ToolCallResult]:
         del input_artifacts
         required_assets = self._required_assets(task, results)
@@ -92,6 +94,7 @@ class DataCollectionSpecialist(SpecialistAgent):
             results,
             requests,
             message=f"Completing dataset coverage for {len(missing_assets)} asset(s).",
+            max_tool_calls=max_tool_calls,
         )
         return results + new_results
 

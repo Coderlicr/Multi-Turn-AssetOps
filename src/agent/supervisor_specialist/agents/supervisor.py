@@ -16,6 +16,7 @@ from agent.supervisor_specialist.runtime.behavior_log import BehaviorLog
 from agent.supervisor_specialist.runtime.event_stream import EventStream
 from agent.supervisor_specialist.schemas import (
     CaseState,
+    ExecutionBudget,
     GraphState,
     SupervisorDecision,
 )
@@ -140,6 +141,7 @@ class SupervisorAgent:
         case_state: CaseState = state["case_state"]
         step_count = state.get("step_count", 0) + 1
         max_steps = state.get("max_steps", 12)
+        budget = state.get("execution_budget") or ExecutionBudget()
 
         # Hard stop: too many steps
         if step_count > max_steps:
@@ -161,6 +163,18 @@ class SupervisorAgent:
                 "next_node": "respond_to_user",
                 "step_count": step_count,
                 "error_message": "Maximum agent step count reached.",
+            }
+
+        if budget.remaining_dispatches <= 0 or budget.remaining_tool_calls <= 0:
+            case_state.status = "waiting_for_user"
+            return {
+                **state,
+                "case_state": case_state,
+                "current_task": None,
+                "next_node": "respond_to_user",
+                "step_count": step_count,
+                "execution_budget": budget,
+                "error_message": "Per-turn execution budget exhausted.",
             }
 
         self.event_stream.emit(
@@ -225,6 +239,14 @@ class SupervisorAgent:
 
         # Apply decision to case state
         case_state = self._apply_decision(case_state, decision)
+        if decision.next_node != "respond_to_user" and not budget.record_dispatch():
+            case_state.status = "waiting_for_user"
+            decision = SupervisorDecision(
+                next_node="respond_to_user",
+                next_task=None,
+                case_status="waiting_for_user",
+                next_step="Per-turn specialist dispatch budget exhausted.",
+            )
 
         self.behavior_log.write(
             case_id=case_state.case_id,
@@ -252,6 +274,7 @@ class SupervisorAgent:
             "next_node": decision.next_node,
             "step_count": step_count,
             "error_message": None,
+            "execution_budget": budget,
         }
 
     async def _call_and_validate(

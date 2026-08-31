@@ -491,9 +491,13 @@ def _build_agent_command(
             _resolve_entrypoint("supervisor-specialist"),
             "--multi-turn",
             "--no-stream",
+            "--save-output",
+            str(agent_log_path),
             "--reference-date",
             reference_date,
         ]
+        if any(spec.startswith("maintie=") for spec in server_specs or []):
+            cmd.extend(["--mode", "maintie"])
         if architecture == "supervisor-specialist-parallel":
             cmd.append("--parallel")
 
@@ -555,11 +559,7 @@ async def run_dialog(
         "turns": [],
         "llm_metrics": None,
         "behavior_log": None,
-        "agent_log": (
-            str(agent_log_path.relative_to(REPO_ROOT))
-            if architecture == "plan-execute"
-            else None
-        ),
+        "agent_log": str(agent_log_path.relative_to(REPO_ROOT)),
         "stderr_file": str(stderr_path.relative_to(REPO_ROOT)),
         "llm_metrics_file": str(metrics_path.relative_to(REPO_ROOT)),
     }

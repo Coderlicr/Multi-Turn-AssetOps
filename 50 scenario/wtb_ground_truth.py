@@ -4,9 +4,9 @@ Ground truth + scoring for the 50 WildToolBench multi-turn WO scenarios (WTB01-W
 For each scenario we define gold(D) -> ordered list of TURNS. Each turn has:
   type   : task | follow | clarify | chat
   intent : the RESOLVED intent (what the vague turn actually means in context)
-  tools  : optimal tool plan = list of PARALLEL-GROUPS (each group runs in parallel;
-           the list order is the required sequence). [] = no tool call expected
-           (clarify/chat -> answer from context, NOT a tool call).
+  reasoning_plan : conceptual computation sketch. This may contain local operations
+                   that are not MCP tools. Formal OPR tool paths are attached by
+                   eval/wtb_tool_policy.py and contain only real MaintIE tools.
   result : the computed gold value from the IE graph (None for chat/clarify)
   judge  : True if the turn also needs an LLM-judged narrative on top of the numbers.
 
@@ -60,7 +60,7 @@ def top_class(D,p):
     return (H(c.most_common(1)[0][0]),c.most_common(1)[0][1]) if c else (None,0)
 
 # turn builder
-def T(typ,intent,tools,result=None,judge=False): return dict(type=typ,intent=intent,tools=tools,result=result,judge=judge)
+def T(typ,intent,reasoning_plan,result=None,judge=False): return dict(type=typ,intent=intent,reasoning_plan=reasoning_plan,result=result,judge=judge)
 G={}
 def gold(sid):
     def deco(fn): G[sid]=fn; return fn
@@ -530,23 +530,6 @@ def _(D):
             T("clarify","metric=failure burden; no tool",[],None),
             T("follow","component+evidence+one task",[["rank:burden:1>compose"]],{"target":H(best),"fault_WOs":f[best],"failed_share":round(fl[best]/f[best],2)},judge=True)]
 
-# =================== SCORING HARNESS ===================
-def canon(plan):
-    "canonical form of a tool plan = tuple of frozensets (parallel groups in sequence)"
-    return tuple(frozenset(g) for g in plan)
-def score(agent_turns, gold_turns):
-    """agent_turns: list of {tools:[[...]], result:...} aligned to gold_turns."""
-    opr_ok=0; apr_ok=0; apr_tot=0
-    for a,g in zip(agent_turns, gold_turns):
-        if canon(a.get("tools",[]))==canon(g["tools"]): opr_ok+=1
-        if g["result"] is not None and not g.get("judge"):
-            apr_tot+=1
-            if a.get("result")==g["result"]: apr_ok+=1
-    n=len(gold_turns)
-    return {"optimal_path_rate":round(opr_ok/n,2),
-            "accomplish_progress_rate":round(apr_ok/apr_tot,2) if apr_tot else None,
-            "compute_turns":apr_tot}
-
 if __name__=="__main__":
     path=sys.argv[1] if len(sys.argv)>1 else "/sessions/gifted-awesome-ramanujan/mnt/uploads/gold_release.json"
     D=load(path)
@@ -557,12 +540,18 @@ if __name__=="__main__":
     json.dump(GT, open("wtb_ground_truth.json","w"), indent=2, default=str)
     ok=sum(1 for sid in GT if "ERROR" not in GT[sid][0])
     print(f"computed ground truth for {ok}/{len(G)} scenarios -> wtb_ground_truth.json")
-    # demo scoring on WTB01: perfect vs flawed agent trace
-    g=GT["WTB01"]
+    # Demo formal scoring on WTB01 using only real MaintIE tool paths.
+    from pathlib import Path
+    repo_root=Path(__file__).resolve().parent.parent
+    sys.path.insert(0,str(repo_root))
+    from eval.wtb_score import score_dialog
+    from eval.wtb_tool_policy import apply_real_tool_policy
+    formal_gt=apply_real_tool_policy(GT)
+    g=formal_gt["WTB01"]
     perfect=[{"tools":t["tools"],"result":t["result"]} for t in g]
-    flawed=[{"tools":[["count:Replace"]],"result":g[0]["result"]},   # serialised (wrong topology)
+    flawed=[{"tools":[["count"]],"result":g[0]["result"]},   # missing the second parallel count
             {"tools":g[1]["tools"],"result":{"top":[("WRONG",1)]}},   # wrong result
-            {"tools":[["count:something"]],"result":None},            # called a tool on a clarify turn
+            {"tools":[["count"]],"result":None},                       # called a tool on a clarify turn
             {"tools":g[3]["tools"],"result":g[3]["result"]}]
-    print("WTB01 perfect trace ->", score(perfect,g))
-    print("WTB01 flawed  trace ->", score(flawed,g))
+    print("WTB01 perfect trace ->", score_dialog(perfect,g))
+    print("WTB01 flawed  trace ->", score_dialog(flawed,g))

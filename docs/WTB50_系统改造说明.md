@@ -88,6 +88,17 @@ deepseek/deepseek-v4-flash
 - 未知 Server 会明确记录错误；
 - 统一记录 Token、LLM 调用次数、工具调用次数和延迟。
 
+### 6. 增加 MaintIE 专用 Supervisor 路径
+
+Supervisor-Specialist 在 WTB50 中不再经过 HVAC 根因分析流程，而是使用一条简单的 MaintIE 专用路径：
+
+- Specialist 获得完整嵌套 MCP schema，未知过滤字段直接报错；
+- 每轮最多派发 2 次 Specialist、调用 6 次工具，失败调用也计入预算；
+- `within_ids` 使用 typed state 跨轮保存，不放进提示词，也不计算哈希；
+- 相同查询不会重复执行，纯聊天和可由上轮结果完成的比较不调用工具；
+- 工具结果只组装一次结构化 `result`，自然语言答案由 `result` 确定性渲染；
+- CLI 可输出逐轮 JSONL，评分器直接读取 `result` 和真实工具轨迹计算 APR、OPR。
+
 ## 如何运行
 
 以 WTB01 为例：
@@ -112,5 +123,7 @@ WTB50 默认使用 `deepseek/deepseek-v4-flash`。API key 保存在本地 `.env`
 
 - MaintIE Server 和 7 个工具可正常调用；
 - 三种架构的 WTB01 smoke test 均为 4/4 轮完成；
-- 全套测试为 266 passed、2 skipped；
-- 下一步是运行 5 个代表性场景的 pilot，确认评分和结果格式后冻结 prompt，再开始正式实验。
+- Supervisor 两个变体的 WTB01/03/15 pilot 均为 11/11 轮完成；
+- 顺序版 APR/OPR 为 9/9、10/11，并行版为 9/9、11/11；
+- WTB15 跨轮筛选得到 107、40、24；
+- 下一步是冻结代码和 prompt，再开始正式实验。

@@ -3,7 +3,7 @@
     {
       "type": "task",
       "intent": "count replacements & repairs",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace",
           "count:Repair"
@@ -18,7 +18,7 @@
     {
       "type": "follow",
       "intent": "of replacements, top object class",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:Replace>group:object>rank:1"
         ]
@@ -36,14 +36,14 @@
     {
       "type": "clarify",
       "intent": "confirm 'change out'==Replace; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "top 3 replaced classes (reuse grouping)",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:3"
         ]
@@ -71,7 +71,7 @@
     {
       "type": "task",
       "intent": "build leak set",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:process_fault"
         ]
@@ -84,14 +84,14 @@
     {
       "type": "chat",
       "intent": "acknowledge; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "on leak set: seal vs replace",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Modify@set",
           "count:Replace@set"
@@ -106,7 +106,7 @@
     {
       "type": "follow",
       "intent": "worst object class in leak set",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:1@set"
         ]
@@ -124,7 +124,7 @@
     {
       "type": "task",
       "intent": "compare bearings & seals (parallel)",
-      "tools": [
+      "reasoning_plan": [
         [
           "extract:bearing",
           "extract:seal"
@@ -155,7 +155,7 @@
     {
       "type": "follow",
       "intent": "which of the two worse",
-      "tools": [
+      "reasoning_plan": [
         [
           "compare"
         ]
@@ -168,14 +168,14 @@
     {
       "type": "chat",
       "intent": "acknowledge; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "add belts -> 3-way",
-      "tools": [
+      "reasoning_plan": [
         [
           "extract:belt"
         ]
@@ -199,7 +199,7 @@
     {
       "type": "task",
       "intent": "ambiguous 'biggest headache' -> await metric or assume fault-count",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:fault_class:1"
         ]
@@ -215,14 +215,14 @@
     {
       "type": "clarify",
       "intent": "metric = most-failing component (not cost); no new tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "usual remedy for that component",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:top>remedy_dist>argmax"
         ]
@@ -237,7 +237,7 @@
     {
       "type": "task",
       "intent": "inspections that find a fault",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:Inspect>count:fault"
         ]
@@ -250,7 +250,7 @@
     {
       "type": "follow",
       "intent": "break by equipment type",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object@set"
         ]
@@ -284,7 +284,7 @@
     {
       "type": "follow",
       "intent": "lowest-yield (wasted) type",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank_asc:yield"
         ]
@@ -310,7 +310,7 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     }
@@ -319,7 +319,7 @@
     {
       "type": "task",
       "intent": "top10 most-replaced",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:replace:10"
         ]
@@ -373,14 +373,14 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "of those10: broken vs routine",
-      "tools": [
+      "reasoning_plan": [
         [
           "split:failed@top10"
         ]
@@ -404,7 +404,7 @@
     {
       "type": "follow",
       "intent": "just the broken ones",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:failed@top10"
         ]
@@ -430,7 +430,7 @@
     {
       "type": "task",
       "intent": "pump problems (vague)",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:pump_text"
         ]
@@ -443,14 +443,14 @@
     {
       "type": "clarify",
       "intent": "use text not asset tag; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "faults & remedies on text-pumps",
-      "tools": [
+      "reasoning_plan": [
         [
           "extract@set"
         ]
@@ -470,7 +470,7 @@
     {
       "type": "task",
       "intent": "failure-mode pareto",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:fault>rank"
         ]
@@ -504,7 +504,7 @@
     {
       "type": "follow",
       "intent": "modes for 80%",
-      "tools": [
+      "reasoning_plan": [
         [
           "cumsum"
         ]
@@ -517,7 +517,7 @@
     {
       "type": "follow",
       "intent": "top mode -> which kit",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:topmode>group:object>rank:1"
         ]
@@ -536,7 +536,7 @@
     {
       "type": "task",
       "intent": "shift comparison (will fail: no shift field)",
-      "tools": [
+      "reasoning_plan": [
         [
           "attempt:group:shift"
         ]
@@ -549,14 +549,14 @@
     {
       "type": "clarify",
       "intent": "user drops shift; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "pivot: failures by type",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object,fault"
         ]
@@ -592,7 +592,7 @@
     {
       "type": "task",
       "intent": "bearing replacements",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace&bearing"
         ]
@@ -605,7 +605,7 @@
     {
       "type": "follow",
       "intent": "same for seals (elliptical)",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace&seal"
         ]
@@ -618,7 +618,7 @@
     {
       "type": "follow",
       "intent": "same for belts; table all 3 (parallelisable)",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace&belt"
         ]
@@ -638,21 +638,21 @@
     {
       "type": "chat",
       "intent": "coffee-machine banter; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "chat",
       "intent": "'anyway'; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "task",
       "intent": "most common action on valves",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:ControllingObject>remedy>argmax"
         ]
@@ -665,7 +665,7 @@
     {
       "type": "follow",
       "intent": "different from sensors?",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:Sensor>remedy>argmax"
         ]
@@ -680,7 +680,7 @@
     {
       "type": "task",
       "intent": "worst repeat offender",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:fault_class:1"
         ]
@@ -696,7 +696,7 @@
     {
       "type": "follow",
       "intent": "evidence: counts+main fault",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:top>count",
           "filter:top>group:fault>rank:1"
@@ -711,7 +711,7 @@
     {
       "type": "follow",
       "intent": "draft change (narrative)",
-      "tools": [
+      "reasoning_plan": [
         [
           "compose"
         ]
@@ -727,7 +727,7 @@
     {
       "type": "task",
       "intent": "count leaks & cracks; which worse",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:leak",
           "count:crack"
@@ -743,7 +743,7 @@
     {
       "type": "follow",
       "intent": "usual remedy for the worse one",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:worse>remedy>argmax"
         ]
@@ -758,7 +758,7 @@
     {
       "type": "task",
       "intent": "most-replaced component",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:replace:1"
         ]
@@ -771,14 +771,14 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "task",
       "intent": "total inspections (distractor)",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Inspect"
         ]
@@ -791,7 +791,7 @@
     {
       "type": "follow",
       "intent": "callback: do we inspect THAT component?",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Inspect&topcomp"
         ]
@@ -806,7 +806,7 @@
     {
       "type": "task",
       "intent": "failures on lines & drives",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:GuidingObject&fault"
         ]
@@ -819,7 +819,7 @@
     {
       "type": "follow",
       "intent": "narrow to replaced",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:Replace@set"
         ]
@@ -832,7 +832,7 @@
     {
       "type": "follow",
       "intent": "narrow to hoses",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:hose@set"
         ]
@@ -847,7 +847,7 @@
     {
       "type": "task",
       "intent": "how many replacements",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace"
         ]
@@ -860,7 +860,7 @@
     {
       "type": "clarify",
       "intent": "unit = distinct parts; recompute",
-      "tools": [
+      "reasoning_plan": [
         [
           "distinct:object@Replace"
         ]
@@ -873,7 +873,7 @@
     {
       "type": "follow",
       "intent": "of those, wear items",
-      "tools": [
+      "reasoning_plan": [
         [
           "intersect:wear"
         ]
@@ -888,7 +888,7 @@
     {
       "type": "task",
       "intent": "engines: replace vs repair",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:eR",
           "count:eP"
@@ -905,14 +905,14 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "motors: same",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:mR",
           "count:mP"
@@ -929,7 +929,7 @@
     {
       "type": "follow",
       "intent": "combine -> overall lean",
-      "tools": [
+      "reasoning_plan": [
         [
           "merge"
         ]
@@ -948,7 +948,7 @@
     {
       "type": "task",
       "intent": "oil changes - what's it on",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:oil>infer_object"
         ]
@@ -961,7 +961,7 @@
     {
       "type": "follow",
       "intent": "service or replacement in our coding",
-      "tools": [
+      "reasoning_plan": [
         [
           "classify_activity@set"
         ]
@@ -977,7 +977,7 @@
     {
       "type": "task",
       "intent": "of failures: replace/repair/service split",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:failed>split3"
         ]
@@ -994,7 +994,7 @@
     {
       "type": "follow",
       "intent": "which dominates",
-      "tools": [
+      "reasoning_plan": [
         [
           "argmax"
         ]
@@ -1007,7 +1007,7 @@
     {
       "type": "clarify",
       "intent": "ensure failed-only scope (re-scope if needed); no NEW tool if already scoped",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     }
@@ -1016,14 +1016,14 @@
     {
       "type": "chat",
       "intent": "game banter; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "task",
       "intent": "most common fault overall",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:fault>rank:1"
         ]
@@ -1039,7 +1039,7 @@
     {
       "type": "follow",
       "intent": "second most common",
-      "tools": [
+      "reasoning_plan": [
         [
           "index:2"
         ]
@@ -1055,7 +1055,7 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     }
@@ -1064,7 +1064,7 @@
     {
       "type": "task",
       "intent": "run-to-failure component",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:rtf:1"
         ]
@@ -1080,7 +1080,7 @@
     {
       "type": "follow",
       "intent": "why it fails (infer mode, not cause)",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:top>group:fault>rank:1"
         ]
@@ -1093,7 +1093,7 @@
     {
       "type": "clarify",
       "intent": "mode not cause; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     }
@@ -1102,7 +1102,7 @@
     {
       "type": "task",
       "intent": "4 dashboard numbers (parallel)",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:all",
           "share:replace",
@@ -1121,7 +1121,7 @@
     {
       "type": "follow",
       "intent": "plain label for last one",
-      "tools": [
+      "reasoning_plan": [
         [
           "humanize"
         ]
@@ -1136,7 +1136,7 @@
     {
       "type": "task",
       "intent": "top5 most-replaced",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:replace:5"
         ]
@@ -1170,7 +1170,7 @@
     {
       "type": "follow",
       "intent": "what's the 3rd",
-      "tools": [
+      "reasoning_plan": [
         [
           "index:3"
         ]
@@ -1183,7 +1183,7 @@
     {
       "type": "follow",
       "intent": "how often is the 5th a breakdown",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:5th&failed>count"
         ]
@@ -1199,7 +1199,7 @@
     {
       "type": "task",
       "intent": "pump replacements",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace&pump"
         ]
@@ -1212,7 +1212,7 @@
     {
       "type": "follow",
       "intent": "correction: pump SEAL replacements",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace&seal"
         ]
@@ -1225,7 +1225,7 @@
     {
       "type": "follow",
       "intent": "whole pumps separately",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:Replace&pump"
         ]
@@ -1240,14 +1240,14 @@
     {
       "type": "chat",
       "intent": "constraint set: faults only; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "task",
       "intent": "most common job (faults only)",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:fault>top(activity,object)"
         ]
@@ -1266,7 +1266,7 @@
     {
       "type": "follow",
       "intent": "by equipment type",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object@fault"
         ]
@@ -1302,7 +1302,7 @@
     {
       "type": "task",
       "intent": "set A: failed",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:failed"
         ]
@@ -1315,7 +1315,7 @@
     {
       "type": "task",
       "intent": "set B: replace",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:replace"
         ]
@@ -1328,7 +1328,7 @@
     {
       "type": "follow",
       "intent": "intersection (reactive replacements)",
-      "tools": [
+      "reasoning_plan": [
         [
           "intersect:A,B"
         ]
@@ -1343,7 +1343,7 @@
     {
       "type": "task",
       "intent": "anything on cooling",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:cooling"
         ]
@@ -1356,14 +1356,14 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "of those, failed",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:failed@set"
         ]
@@ -1376,7 +1376,7 @@
     {
       "type": "follow",
       "intent": "remedies for those",
-      "tools": [
+      "reasoning_plan": [
         [
           "remedy_dist@set"
         ]
@@ -1391,7 +1391,7 @@
     {
       "type": "task",
       "intent": "leak remedies & crack remedies (parallel)",
-      "tools": [
+      "reasoning_plan": [
         [
           "remedy:leak",
           "remedy:crack"
@@ -1413,7 +1413,7 @@
     {
       "type": "follow",
       "intent": "where differ most",
-      "tools": [
+      "reasoning_plan": [
         [
           "compare"
         ]
@@ -1428,7 +1428,7 @@
     {
       "type": "task",
       "intent": "top3 job signatures",
-      "tools": [
+      "reasoning_plan": [
         [
           "scan>group:(obj,fault,act)>rank:3"
         ]
@@ -1466,14 +1466,14 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "#1 variant count",
-      "tools": [
+      "reasoning_plan": [
         [
           "count_variants:#1"
         ]
@@ -1492,7 +1492,7 @@
     {
       "type": "task",
       "intent": "bearings replace vs repair",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:bR",
           "count:bP"
@@ -1509,7 +1509,7 @@
     {
       "type": "follow",
       "intent": "same for housings",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:hR",
           "count:hP"
@@ -1528,7 +1528,7 @@
     {
       "type": "task",
       "intent": "total faults",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:fault"
         ]
@@ -1541,7 +1541,7 @@
     {
       "type": "follow",
       "intent": "+protective gear",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:ProtectingObject@set"
         ]
@@ -1554,7 +1554,7 @@
     {
       "type": "follow",
       "intent": "+replaced",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:Replace@set"
         ]
@@ -1569,7 +1569,7 @@
     {
       "type": "task",
       "intent": "breakdown share of replacements",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:replace",
           "count:replace&fault>ratio"
@@ -1583,7 +1583,7 @@
     {
       "type": "follow",
       "intent": "branch: if>1/3 worst else 'fine'",
-      "tools": [
+      "reasoning_plan": [
         [
           "select"
         ]
@@ -1599,7 +1599,7 @@
     {
       "type": "task",
       "intent": "which asset fails most (tags junk)",
-      "tools": [
+      "reasoning_plan": [
         [
           "attempt:group:tag"
         ]
@@ -1612,7 +1612,7 @@
     {
       "type": "clarify",
       "intent": "pivot to text-class",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object_class"
         ]
@@ -1628,7 +1628,7 @@
     {
       "type": "follow",
       "intent": "its top mode",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:top>group:fault>rank:1"
         ]
@@ -1643,7 +1643,7 @@
     {
       "type": "task",
       "intent": "replace counts by class desc",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object>rank"
         ]
@@ -1697,7 +1697,7 @@
     {
       "type": "follow",
       "intent": "top3",
-      "tools": [
+      "reasoning_plan": [
         [
           "index:1..3"
         ]
@@ -1723,7 +1723,7 @@
     {
       "type": "follow",
       "intent": "#2 fault mix",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:#2>group:fault"
         ]
@@ -1742,7 +1742,7 @@
     {
       "type": "task",
       "intent": "most-failing: count & variety (parallel)",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:count:1",
           "rank:variety:1"
@@ -1763,14 +1763,14 @@
     {
       "type": "clarify",
       "intent": "choose variety; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "its modes",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:variety_winner>list:fault"
         ]
@@ -1791,7 +1791,7 @@
     {
       "type": "task",
       "intent": "inspect-then-fix same job",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:inspect&remedy"
         ]
@@ -1804,14 +1804,14 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "on what equipment most",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object@set>rank:1"
         ]
@@ -1829,7 +1829,7 @@
     {
       "type": "task",
       "intent": "overall reactive vs proactive",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:reactive",
           "count:proactive"
@@ -1844,7 +1844,7 @@
     {
       "type": "follow",
       "intent": "per equipment type",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object"
         ]
@@ -1878,7 +1878,7 @@
     {
       "type": "follow",
       "intent": "most reactive type",
-      "tools": [
+      "reasoning_plan": [
         [
           "argmax:share"
         ]
@@ -1896,7 +1896,7 @@
     {
       "type": "task",
       "intent": "jobs mentioning a number",
-      "tools": [
+      "reasoning_plan": [
         [
           "search:number"
         ]
@@ -1909,14 +1909,14 @@
     {
       "type": "clarify",
       "intent": "mean <num> placeholders; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "fraction of all",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:placeholder>ratio"
         ]
@@ -1932,7 +1932,7 @@
     {
       "type": "task",
       "intent": "top wear items by replacement (parallel)",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:bearing",
           "count:seal",
@@ -1953,7 +1953,7 @@
     {
       "type": "follow",
       "intent": "unplanned vs plannable",
-      "tools": [
+      "reasoning_plan": [
         [
           "split:failed@4"
         ]
@@ -1971,7 +1971,7 @@
     {
       "type": "follow",
       "intent": "unplanned only, ranked",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:unplanned"
         ]
@@ -2003,7 +2003,7 @@
     {
       "type": "task",
       "intent": "failure-mode pareto",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:fault>rank"
         ]
@@ -2037,7 +2037,7 @@
     {
       "type": "follow",
       "intent": "pivot: redo for components",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object>rank"
         ]
@@ -2053,7 +2053,7 @@
     {
       "type": "follow",
       "intent": "top one mostly outright failure?",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:top>failed_share"
         ]
@@ -2068,7 +2068,7 @@
     {
       "type": "task",
       "intent": "replace by class & class by activity (parallel)",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:object",
           "group:activity"
@@ -2083,7 +2083,7 @@
     {
       "type": "follow",
       "intent": "reconcile",
-      "tools": [
+      "reasoning_plan": [
         [
           "assert_equal"
         ]
@@ -2098,14 +2098,14 @@
     {
       "type": "chat",
       "intent": "scope: mobile fleet only; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "task",
       "intent": "most-replaced component (overall; no mobile/fixed field)",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:replace:1"
         ]
@@ -2123,7 +2123,7 @@
     {
       "type": "clarify",
       "intent": "confirm cannot split mobile/fixed; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     }
@@ -2132,7 +2132,7 @@
     {
       "type": "task",
       "intent": "worst component",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:fault_class:1"
         ]
@@ -2148,7 +2148,7 @@
     {
       "type": "follow",
       "intent": "its worst fault",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:top>group:fault>rank:1"
         ]
@@ -2161,7 +2161,7 @@
     {
       "type": "follow",
       "intent": "most-skewed fix for that fault",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:fault>remedy>argmax_share"
         ]
@@ -2177,7 +2177,7 @@
     {
       "type": "task",
       "intent": "diagnose-only count",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:diagnose_only"
         ]
@@ -2190,7 +2190,7 @@
     {
       "type": "task",
       "intent": "replace-without-diagnosis count",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:replace_no_diag"
         ]
@@ -2203,7 +2203,7 @@
     {
       "type": "follow",
       "intent": "interpret the gap (RCA habit)",
-      "tools": [
+      "reasoning_plan": [
         [
           "synthesise"
         ]
@@ -2218,7 +2218,7 @@
     {
       "type": "task",
       "intent": "usual fix when a sensor plays up",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:sensor_fault>remedy>argmax"
         ]
@@ -2231,7 +2231,7 @@
     {
       "type": "follow",
       "intent": "when fully failed, does it change",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:sensor_failed>remedy>argmax"
         ]
@@ -2246,7 +2246,7 @@
     {
       "type": "task",
       "intent": "dominant remedy for seized/leaking/cracked (parallel)",
-      "tools": [
+      "reasoning_plan": [
         [
           "remedy:seized",
           "remedy:leaking",
@@ -2265,7 +2265,7 @@
     {
       "type": "follow",
       "intent": "most 'just replace it' fault",
-      "tools": [
+      "reasoning_plan": [
         [
           "argmax:replace_share"
         ]
@@ -2281,7 +2281,7 @@
     {
       "type": "task",
       "intent": "most common job on valves",
-      "tools": [
+      "reasoning_plan": [
         [
           "filter:valve>activity>rank:1"
         ]
@@ -2294,14 +2294,14 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "task",
       "intent": "jobs with no object (distractor)",
-      "tools": [
+      "reasoning_plan": [
         [
           "count:no_object"
         ]
@@ -2314,7 +2314,7 @@
     {
       "type": "follow",
       "intent": "back to valves: 2nd most common",
-      "tools": [
+      "reasoning_plan": [
         [
           "index:2@valve"
         ]
@@ -2329,7 +2329,7 @@
     {
       "type": "task",
       "intent": "trend over time (no date field)",
-      "tools": [
+      "reasoning_plan": [
         [
           "attempt:trend"
         ]
@@ -2342,14 +2342,14 @@
     {
       "type": "clarify",
       "intent": "fallback authorised: static breakdown; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "static failure-mode breakdown + flag top",
-      "tools": [
+      "reasoning_plan": [
         [
           "group:fault>rank>flag:1"
         ]
@@ -2386,7 +2386,7 @@
     {
       "type": "task",
       "intent": "one-line reliability headline",
-      "tools": [
+      "reasoning_plan": [
         [
           "compose:top_class+mode+reactive%"
         ]
@@ -2401,7 +2401,7 @@
     {
       "type": "follow",
       "intent": "critique its weakest assumption",
-      "tools": [
+      "reasoning_plan": [
         [
           "reflect"
         ]
@@ -2414,7 +2414,7 @@
     {
       "type": "chat",
       "intent": "no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     }
@@ -2423,7 +2423,7 @@
     {
       "type": "task",
       "intent": "single most important action (open)",
-      "tools": [
+      "reasoning_plan": [
         [
           "scan"
         ]
@@ -2436,14 +2436,14 @@
     {
       "type": "clarify",
       "intent": "metric=failure burden; no tool",
-      "tools": [],
+      "reasoning_plan": [],
       "result": null,
       "judge": false
     },
     {
       "type": "follow",
       "intent": "component+evidence+one task",
-      "tools": [
+      "reasoning_plan": [
         [
           "rank:burden:1>compose"
         ]

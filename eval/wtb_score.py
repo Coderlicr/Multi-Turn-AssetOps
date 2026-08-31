@@ -8,22 +8,99 @@ import math
 from pathlib import Path
 from typing import Any
 
-from eval.wtb_scenarios import GOLD_FILE
+if __package__:
+    from .wtb_scenarios import GOLD_FILE, load_wtb_gold
+else:  # Support ``python eval/wtb_score.py``.
+    from wtb_scenarios import GOLD_FILE, load_wtb_gold
 
 
-def canonical_plan(plan: list[list[str]] | None) -> tuple[frozenset[str], ...]:
-    """Keep sequential group order while ignoring order inside parallel groups."""
-    return tuple(frozenset(group) for group in (plan or []))
+def _bare_tool_name(name: str) -> str:
+    """Accept both bare trace names and supervisor-style ``maintie.name``."""
+    return name.rsplit(".", 1)[-1]
+
+
+def canonical_plan(plan: list[list[str]] | None) -> tuple[tuple[str, ...], ...]:
+    """Keep sequence and duplicate calls; ignore order only within parallel groups."""
+    return tuple(
+        tuple(sorted(_bare_tool_name(tool) for tool in group))
+        for group in (plan or [])
+    )
+
+
+def _accepted_plans(gold_turn: dict) -> list[list[list[str]]]:
+    return gold_turn.get("accepted_tool_plans") or [gold_turn.get("tools", [])]
+
+
+def _normalize_result(value: Any) -> Any:
+    """Normalize presentation-only variations without using scenario answers."""
+    if isinstance(value, list):
+        return [_normalize_result(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    folded_keys = {str(key).casefold() for key in value}
+    if folded_keys == {"object_class", "count"}:
+        object_key = next(
+            key for key in value if str(key).casefold() == "object_class"
+        )
+        count_key = next(key for key in value if str(key).casefold() == "count")
+        return {
+            "top": [[value[object_key], value[count_key]]]
+        }
+
+    aliases = {
+        "replacements": "replace",
+        "repairs": "repair",
+        "fault_work_orders": "fault",
+        "activities": "remedy",
+        "actions_taken": "remedy",
+        "more_problematic_component": "worse",
+        "selected": "worse",
+        "most_common_equipment": "top",
+        "top_3_object_classes": "top3",
+        "top_3": "top3",
+        "total_failure_records": "n",
+    }
+    normalized: dict[str, Any] = {}
+    for raw_key, raw_child in value.items():
+        key = aliases.get(str(raw_key).casefold(), str(raw_key).casefold())
+        child = _normalize_result(raw_child)
+        if key == "top" and isinstance(child, list) and len(child) == 2:
+            if isinstance(child[0], str) and isinstance(child[1], (int, float)):
+                child = [child]
+        if key == "remedy" and isinstance(child, list):
+            if all(
+                isinstance(item, list)
+                and len(item) == 2
+                and isinstance(item[0], str)
+                for item in child
+            ):
+                child = {item[0]: item[1] for item in child}
+        normalized[key] = child
+
+    if len(normalized) == 1:
+        key, child = next(iter(normalized.items()))
+        if (key == "count" or key.endswith("_count")) and isinstance(
+            child, (int, float)
+        ):
+            return {"n": child}
+    return normalized
 
 
 def _same_result(actual: Any, expected: Any) -> bool:
+    actual = _normalize_result(actual)
+    expected = _normalize_result(expected)
     if isinstance(actual, bool) or isinstance(expected, bool):
         return actual is expected
     if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
         return math.isclose(float(actual), float(expected), rel_tol=1e-6, abs_tol=1e-6)
     if isinstance(actual, dict) and isinstance(expected, dict):
-        return actual.keys() == expected.keys() and all(
-            _same_result(actual[key], expected[key]) for key in actual
+        if set(expected) == {"worse"} and isinstance(expected["worse"], str):
+            selected = expected["worse"].casefold()
+            if any(str(key).casefold() == selected for key in actual):
+                return True
+        return expected.keys() <= actual.keys() and all(
+            _same_result(actual[key], expected[key]) for key in expected
         )
     if isinstance(actual, (list, tuple)) and isinstance(expected, (list, tuple)):
         return len(actual) == len(expected) and all(
@@ -43,9 +120,16 @@ def score_dialog(agent_turns: list[dict], gold_turns: list[dict]) -> dict:
         gold = gold_turns[index] if index < len(gold_turns) else None
         if gold is None:
             continue
-        if canonical_plan(agent.get("tools")) == canonical_plan(gold.get("tools")):
+        if index >= len(agent_turns):
+            # A missing response is never a correct path, including when the
+            # expected decision was to reuse context without another tool.
+            continue
+        actual_plan = canonical_plan(agent.get("tools"))
+        accepted = {canonical_plan(plan) for plan in _accepted_plans(gold)}
+        if actual_plan in accepted:
             path_correct += 1
-        if bool(agent.get("tools")) == bool(gold.get("tools")):
+        gold_requires_tool = bool(gold.get("tools"))
+        if bool(agent.get("tools")) == gold_requires_tool:
             no_tool_correct += 1
 
     compute_indices = [
@@ -79,15 +163,33 @@ def score_dialog(agent_turns: list[dict], gold_turns: list[dict]) -> dict:
     }
 
 
+def load_agent_trace(path: Path) -> list[dict]:
+    """Load either the legacy JSON array or the CLI's per-turn JSONL trace."""
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        records = json.loads(text)
+    else:
+        records = [json.loads(line) for line in text.splitlines() if line.strip()]
+    if not isinstance(records, list) or not all(
+        isinstance(record, dict) for record in records
+    ):
+        raise ValueError("Agent trace must contain a list of JSON objects")
+    return records
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Score one WTB-50 agent trace JSON.")
+    parser = argparse.ArgumentParser(
+        description="Score one WTB-50 agent trace (JSON array or JSONL)."
+    )
     parser.add_argument("scenario_id", help="WTB01 through WTB50")
-    parser.add_argument("trace", type=Path, help="JSON list of agent turn records")
+    parser.add_argument("trace", type=Path, help="Agent turn records as JSON or JSONL")
     parser.add_argument("--gold", type=Path, default=GOLD_FILE)
     args = parser.parse_args()
 
-    gold = json.loads(args.gold.read_text(encoding="utf-8"))
-    agent_turns = json.loads(args.trace.read_text(encoding="utf-8"))
+    gold = load_wtb_gold(args.gold)
+    agent_turns = load_agent_trace(args.trace)
     if args.scenario_id not in gold:
         parser.error(f"Unknown scenario: {args.scenario_id}")
     print(json.dumps(score_dialog(agent_turns, gold[args.scenario_id]), indent=2))

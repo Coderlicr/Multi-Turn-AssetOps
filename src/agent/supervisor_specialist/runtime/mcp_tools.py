@@ -33,6 +33,29 @@ DEFAULT_SERVER_PATHS: dict[str, Path | str] = {
 _TOOL_CALL_TIMEOUT = 300  # seconds
 
 
+class MCPToolExecutionError(RuntimeError):
+    """Raised when MCP returns a protocol-level tool error."""
+
+
+def _content_from_tool_result(result) -> str:
+    """Extract text while preserving the MCP ``isError`` signal."""
+    text = "\n".join(
+        getattr(item, "text", str(item)) for item in getattr(result, "content", [])
+    )
+    if getattr(result, "isError", False):
+        raise MCPToolExecutionError(text or "MCP tool returned isError=true")
+    return text
+
+
+def _exception_message(exc: BaseException) -> str:
+    """Prefer the actionable leaf error over an opaque TaskGroup wrapper."""
+    children = getattr(exc, "exceptions", None)
+    if children:
+        messages = [_exception_message(child) for child in children]
+        return "; ".join(message for message in messages if message)
+    return str(exc) or repr(exc)
+
+
 def _make_stdio_params(server: Path | str):
     """Build StdioServerParameters, passing the full current env explicitly.
 
@@ -119,9 +142,7 @@ async def _call_tool_on_server(
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, args)
-                return "\n".join(
-                    getattr(item, "text", str(item)) for item in result.content
-                )
+                return _content_from_tool_result(result)
 
     t0 = time.monotonic()
     status = "ok"
@@ -173,7 +194,7 @@ class MCPToolClient:
                 error=f"Tool call '{tool_name}' timed out after {_TOOL_CALL_TIMEOUT}s",
             )
         except Exception as exc:  # noqa: BLE001
-            return MCPToolResult(status="failed", error=str(exc) or repr(exc))
+            return MCPToolResult(status="failed", error=_exception_message(exc))
 
     async def list_tools(self, server_name: str) -> list[dict]:
         server_path = self._server_paths.get(server_name)

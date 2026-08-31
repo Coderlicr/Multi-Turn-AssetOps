@@ -4,6 +4,12 @@
 
 **Agent toolbox over `work_orders.csv` (text only):** `search(filter)`, `extract(wo_ids)`, `count(filter)`, `group_count(by)`, `rank(by,n)`, `get_text(wo_id)`, `compare(A,B)`. The underlying analytics are all answerable from the IE graph (verifiable like the prior sets); the difficulty is *orchestration + intent-tracking + policy-switching*, not the final number.
 
+**OPR scoring.** The `Gold orchestration` lines below are conceptual reasoning
+sketches. Literal OPR traces are restricted to the seven tools above; local
+operations such as indexing, merging, argmax, or reflection are not tool calls.
+Equivalent valid MCP paths are listed in `eval/wtb_tool_policy.py` and documented
+in `WTB_TOOL_PATH_POLICY.md`.
+
 Turn tags: `[task]` `[follow]` `[clarify]` `[chat]`.
 
 ---

@@ -413,6 +413,35 @@ async def test_specialist_executes_parallel_batch_and_logs_metadata(tmp_path, mo
 
 
 @pytest.mark.anyio
+async def test_parallel_batch_respects_remaining_global_tool_budget(tmp_path):
+    llm = BatchLLM()
+    mcp_tools = BatchMCPToolClient(delay=0.01)
+    specialist = TimeSeriesAnalysisSpecialist(
+        llm=llm,
+        mcp_tools=mcp_tools,
+        artifact_store=ArtifactStore(),
+        behavior_log=BehaviorLog(log_dir=tmp_path),
+        event_stream=EventStream(quiet=True),
+        enable_parallel=True,
+    )
+    task = TaskEnvelope(
+        case_id="case_budgeted_parallel",
+        task_type="time_series_analysis",
+        goal="Analyze four files, but obey the remaining turn budget.",
+        site="MAIN",
+        asset_ids=["Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"],
+        time_window=TimeWindow(),
+        focus_metrics=["temperature"],
+        input_artifacts=[],
+    )
+
+    result = await specialist.run(task, max_tool_calls=3)
+
+    assert len(mcp_tools.calls) == 3
+    assert len(result.tool_calls) == 3
+
+
+@pytest.mark.anyio
 async def test_parallel_disabled_runs_only_one_tool_call_from_batch(tmp_path):
     llm = BatchLLM()
     mcp_tools = BatchMCPToolClient(delay=0.01)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from pathlib import Path
@@ -35,6 +36,24 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=int(os.environ.get("SS_MAX_STEPS", "12")),
         help="Maximum number of agent steps (default: %(default)s)",
+    )
+    p.add_argument(
+        "--max-specialist-dispatches",
+        type=int,
+        default=int(os.environ.get("SS_MAX_SPECIALIST_DISPATCHES", "2")),
+        help="Maximum specialist dispatches per turn (default: %(default)s)",
+    )
+    p.add_argument(
+        "--max-tool-calls",
+        type=int,
+        default=int(os.environ.get("SS_MAX_TOOL_CALLS", "6")),
+        help="Maximum tool calls per turn, including failures (default: %(default)s)",
+    )
+    p.add_argument(
+        "--mode",
+        choices=("auto", "maintie", "assetops"),
+        default=os.environ.get("SS_MODE", "auto"),
+        help="Execution path selection (default: %(default)s)",
     )
     p.add_argument(
         "--no-stream",
@@ -75,6 +94,17 @@ def _build_parser() -> argparse.ArgumentParser:
             "Register an MCP server as NAME=PATH. Repeating this option "
             "overrides the default server set."
         ),
+    )
+    p.add_argument(
+        "--save-output",
+        type=Path,
+        default=None,
+        help="Append structured turn records as JSONL.",
+    )
+    p.add_argument(
+        "--output-json",
+        action="store_true",
+        help="Print each structured turn record as JSON.",
     )
     return p
 
@@ -121,15 +151,36 @@ async def _run(args: argparse.Namespace) -> None:
         reference_date=args.reference_date,
         parallel=args.parallel,
         server_paths=server_paths,
+        mode=getattr(args, "mode", "auto"),
+        max_specialist_dispatches=getattr(args, "max_specialist_dispatches", 2),
+        max_tool_calls=getattr(args, "max_tool_calls", 6),
     )
 
+    async def execute(question: str):
+        if hasattr(runner, "run_turn_result"):
+            return await runner.run_turn_result(question)
+        answer = await runner.run_turn(question)
+        from agent.supervisor_specialist.schemas import SupervisorTurnResult
+        return SupervisorTurnResult(question=question, answer=answer)
+
+    def render(result) -> None:
+        record = result.model_dump(mode="json")
+        save_output = getattr(args, "save_output", None)
+        if save_output is not None:
+            save_output.parent.mkdir(parents=True, exist_ok=True)
+            with save_output.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        if getattr(args, "output_json", False):
+            print(json.dumps(record, ensure_ascii=False))
+        else:
+            print(result.answer)
+
     if not args.multi_turn:
-        response = await runner.run(args.question)
-        print(response)
+        render(await execute(args.question))
         return
 
     if args.question:
-        print(await runner.run_turn(args.question))
+        render(await execute(args.question))
 
     while True:
         try:
@@ -142,7 +193,7 @@ async def _run(args: argparse.Namespace) -> None:
             continue
         if question.lower() in {"exit", "quit"}:
             break
-        print(await runner.run_turn(question))
+        render(await execute(question))
 
 
 def main() -> None:

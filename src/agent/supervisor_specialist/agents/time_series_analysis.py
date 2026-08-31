@@ -37,6 +37,8 @@ class TimeSeriesAnalysisSpecialist(SpecialistAgent):
         task: TaskEnvelope,
         input_artifacts: list[ArtifactEnvelope],
         results: list[ToolCallResult],
+        *,
+        max_tool_calls: int,
     ) -> list[ToolCallResult]:
         datasets = self._datasets_from_artifacts(input_artifacts)
         if not datasets:
@@ -60,6 +62,7 @@ class TimeSeriesAnalysisSpecialist(SpecialistAgent):
                 results,
                 stats_requests,
                 message=f"Completing CSV stats coverage for {len(missing_stats)} dataset(s).",
+                max_tool_calls=max_tool_calls,
             )
 
         existing_tsfm_paths = {
@@ -100,6 +103,7 @@ class TimeSeriesAnalysisSpecialist(SpecialistAgent):
                 results,
                 tsfm_requests,
                 message=f"Completing TSFM coverage for {len(tsfm_requests)} dataset(s).",
+                max_tool_calls=max_tool_calls,
             )
         return results
 

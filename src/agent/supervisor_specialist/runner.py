@@ -15,6 +15,7 @@ from agent.supervisor_specialist.agents.maintenance_planning import MaintenanceP
 from agent.supervisor_specialist.agents.supervisor import SupervisorAgent
 from agent.supervisor_specialist.agents.time_series_analysis import TimeSeriesAnalysisSpecialist
 from agent.supervisor_specialist.graph import Dependencies, build_graph
+from agent.supervisor_specialist.maintie_path import MaintIEQueryPath, _tool_plan
 from agent.supervisor_specialist.runtime.artifact_store import ArtifactStore
 from agent.supervisor_specialist.runtime.behavior_log import BehaviorLog
 from agent.supervisor_specialist.runtime.event_stream import EventStream
@@ -24,7 +25,10 @@ from agent.supervisor_specialist.schemas import (
     CaseState,
     ConversationMemory,
     DialogTurnRecord,
+    ExecutionBudget,
     GraphState,
+    RunMode,
+    SupervisorTurnResult,
     TimeWindow,
     ToolCallSummary,
 )
@@ -38,6 +42,7 @@ _CHECKPOINT_TYPES = (
     DialogTurnRecord,
     TimeWindow,
     ToolCallSummary,
+    ExecutionBudget,
 )
 
 
@@ -80,20 +85,44 @@ class SupervisorSpecialistRunner:
         reference_date: str | None = None,
         mcp_tools: MCPToolClient | None = None,
         parallel: bool = False,
+        max_specialist_dispatches: int = 2,
+        max_tool_calls: int = 6,
+        mode: RunMode = "auto",
     ) -> None:
+        if mode not in {"auto", "maintie", "assetops"}:
+            raise ValueError(f"Unknown Supervisor-Specialist mode: {mode}")
         self._llm = llm
         self._max_steps = max_steps
         self._parallel = parallel
+        self._max_specialist_dispatches = max_specialist_dispatches
+        self._max_tool_calls = max_tool_calls
         self._ref = _resolve_reference_date(reference_date)
         self._dialog_thread_id = f"dialog_{uuid.uuid4().hex}"
         self._dialog_started = False
         self._last_dialog_state: GraphState | None = None
+        effective_server_paths = server_paths or DEFAULT_SERVER_PATHS
+        self._mode: RunMode = (
+            "maintie"
+            if mode == "auto" and set(effective_server_paths) == {"maintie"}
+            else ("assetops" if mode == "auto" else mode)
+        )
+        self._maintie_memory = ConversationMemory()
+        self._maintie_case_state: CaseState | None = None
+        self._maintie_turn_index = 0
 
         artifact_store = ArtifactStore()
         event_stream = EventStream(quiet=quiet)
         behavior_log = BehaviorLog(log_dir=log_dir)
         self._behavior_log = behavior_log
-        mcp_tools = mcp_tools or MCPToolClient(server_paths=server_paths or DEFAULT_SERVER_PATHS)
+        mcp_tools = mcp_tools or MCPToolClient(server_paths=effective_server_paths)
+        self._mcp_tools = mcp_tools
+        self._maintie_path = MaintIEQueryPath(
+            llm=llm,
+            mcp_tools=mcp_tools,
+            behavior_log=behavior_log,
+            event_stream=event_stream,
+            enable_parallel=parallel,
+        )
 
         supervisor = SupervisorAgent(
             llm=llm,
@@ -129,6 +158,8 @@ class SupervisorSpecialistRunner:
         self._graph = build_graph(deps, checkpointer=MemorySaver(serde=serde))
 
     async def run(self, question: str) -> str:
+        if self._mode == "maintie":
+            return (await self.run_turn_result(question)).answer
         case_state = self._init_case_state(question)
         self._behavior_log.write(
             case_id=case_state.case_id,
@@ -147,13 +178,74 @@ class SupervisorSpecialistRunner:
         return result.get("final_response") or "(no response generated)"
 
     async def run_turn(self, question: str) -> str:
-        """Run one turn in the runner's in-memory multi-turn dialog session."""
+        """Compatibility API returning only the user-facing answer."""
+        return (await self.run_turn_result(question)).answer
+
+    async def run_turn_result(self, question: str) -> SupervisorTurnResult:
+        """Run one turn and return the structured result and exact tool path."""
+        if self._mode == "maintie":
+            return await self._run_maintie_turn(question)
+        answer = await self._run_assetops_turn(question)
+        state = self._last_dialog_state or {}
+        calls = state.get("turn_tool_calls", [])
+        return SupervisorTurnResult(
+            question=question,
+            answer=answer,
+            result=state.get("structured_result"),
+            tools=_tool_plan(calls),
+            tool_calls=calls,
+            status="partial" if state.get("error_message") else "ok",
+            error=state.get("error_message"),
+        )
+
+    async def _run_maintie_turn(self, question: str) -> SupervisorTurnResult:
+        if self._maintie_case_state is None:
+            self._maintie_case_state = self._init_case_state(question)
+        else:
+            self._maintie_case_state.user_goal = question
+        self._maintie_turn_index += 1
+        case_id = self._maintie_case_state.case_id
+        self._behavior_log.write(
+            case_id=case_id,
+            agent_role="user",
+            task_type="user_question",
+            input_artifact_ids=[],
+            tool_calls=[],
+            output_artifact_ids=[],
+            status="ok",
+            turn_id=f"turn_{self._maintie_turn_index:03d}",
+            user_message=question,
+        )
+        budget = self._new_execution_budget()
+        turn_result = await self._maintie_path.run_turn(
+            question=question,
+            case_id=case_id,
+            turn_index=self._maintie_turn_index,
+            memory=self._maintie_memory,
+            budget=budget,
+        )
+        self._dialog_started = True
+        self._last_dialog_state = {
+            "case_state": self._maintie_case_state,
+            "conversation_memory": self._maintie_memory,
+            "final_response": turn_result.answer,
+            "structured_result": turn_result.result,
+            "turn_index": self._maintie_turn_index,
+            "turn_tool_calls": turn_result.tool_calls,
+            "execution_budget": budget,
+            "error_message": turn_result.error,
+        }
+        return turn_result
+
+    async def _run_assetops_turn(self, question: str) -> str:
+        """Run one legacy graph turn in the in-memory dialog session."""
         config = {"configurable": {"thread_id": self._dialog_thread_id}}
         if self._dialog_started:
             case_id = self._last_dialog_state["case_state"].case_id
             input_state: GraphState = {
                 "current_user_message": question,
                 "max_steps": self._max_steps,
+                "execution_budget": self._new_execution_budget(),
             }
         else:
             case_state = self._init_case_state(question)
@@ -186,6 +278,10 @@ class SupervisorSpecialistRunner:
     def last_dialog_state(self) -> GraphState | None:
         return self._last_dialog_state
 
+    @property
+    def mode(self) -> RunMode:
+        return self._mode
+
     def _initial_state(self, question: str, case_state: CaseState) -> GraphState:
         return {
             "case_state": case_state,
@@ -206,7 +302,15 @@ class SupervisorSpecialistRunner:
             "turn_index": 0,
             "turn_artifact_ids": [],
             "turn_tool_calls": [],
+            "execution_budget": self._new_execution_budget(),
+            "structured_result": None,
         }
+
+    def _new_execution_budget(self) -> ExecutionBudget:
+        return ExecutionBudget(
+            max_specialist_dispatches=self._max_specialist_dispatches,
+            max_tool_calls=self._max_tool_calls,
+        )
 
     def _init_case_state(self, question: str) -> CaseState:
         return CaseState(

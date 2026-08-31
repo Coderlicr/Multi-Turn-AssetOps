@@ -12,6 +12,11 @@ import json
 import re
 from pathlib import Path
 
+if __package__:
+    from .wtb_tool_policy import apply_real_tool_policy
+else:  # Support ``python eval/wtb_scenarios.py`` and sibling script imports.
+    from wtb_tool_policy import apply_real_tool_policy
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WTB_ROOT = REPO_ROOT / "50 scenario"
 SCENARIO_FILE = WTB_ROOT / "MaintIE_50_WildToolBench_Scenarios.md"
@@ -27,6 +32,12 @@ def _load_metadata(path: Path) -> dict[str, dict[str, str]]:
         return {row["id"]: row for row in csv.DictReader(handle)}
 
 
+def load_wtb_gold(path: Path = GOLD_FILE) -> dict[str, list[dict]]:
+    """Load fixed results and attach real MaintIE-tool OPR paths."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return apply_real_tool_policy(raw)
+
+
 def load_wtb_scenarios(
     scenario_file: Path = SCENARIO_FILE,
     metadata_file: Path = METADATA_FILE,
@@ -34,7 +45,7 @@ def load_wtb_scenarios(
 ) -> list[dict]:
     """Return 50 aligned scenario records without exposing gold in turn text."""
     metadata = _load_metadata(metadata_file)
-    gold = json.loads(gold_file.read_text(encoding="utf-8"))
+    gold = load_wtb_gold(gold_file)
 
     scenarios: list[dict] = []
     current: dict | None = None

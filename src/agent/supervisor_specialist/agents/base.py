@@ -245,6 +245,8 @@ def _summarize_tool_calls(results: list[ToolCallResult]) -> list[ToolCallSummary
                 parallel_group_id=r.parallel_group_id,
                 parallel_index=r.parallel_index,
                 parallel_size=r.parallel_size,
+                selection_scope=r.selection_scope,
+                within_ids_count=r.within_ids_count,
             )
         )
     return summaries
@@ -302,7 +304,12 @@ class SpecialistAgent(ABC):
     def _role_label(self) -> str:
         return self.role.replace("_", " ").title()
 
-    async def run(self, task: TaskEnvelope) -> SpecialistResult:
+    async def run(
+        self,
+        task: TaskEnvelope,
+        *,
+        max_tool_calls: int | None = None,
+    ) -> SpecialistResult:
         self.event_stream.emit(
             case_id=task.case_id,
             agent_role=self.role,
@@ -315,9 +322,24 @@ class SpecialistAgent(ABC):
         tool_schemas = await self.mcp_tools.get_allowed_tool_schemas(self.allowed_tools)
 
         # ReAct loop: interleave LLM decisions with tool execution
-        results = await self._run_react_loop(task, input_artifacts, tool_schemas)
+        call_limit = (
+            _MAX_TOOL_CALLS_PER_SPECIALIST
+            if max_tool_calls is None
+            else max(0, max_tool_calls)
+        )
+        results = await self._run_react_loop(
+            task,
+            input_artifacts,
+            tool_schemas,
+            max_tool_calls=call_limit,
+        )
         if self.enable_parallel:
-            results = await self._postprocess_tool_results(task, input_artifacts, results)
+            results = await self._postprocess_tool_results(
+                task,
+                input_artifacts,
+                results,
+                max_tool_calls=call_limit,
+            )
 
         # Artifact generation: LLM synthesizes all tool results into artifacts
         final = await self._call_llm_for_artifacts(task, input_artifacts, results)
@@ -359,6 +381,8 @@ class SpecialistAgent(ABC):
                     parallel_group_id=r.parallel_group_id,
                     parallel_index=r.parallel_index,
                     parallel_size=r.parallel_size,
+                    selection_scope=r.selection_scope,
+                    within_ids_count=r.within_ids_count,
                 )
                 for r in results
             ],
@@ -395,6 +419,8 @@ class SpecialistAgent(ABC):
         task: TaskEnvelope,
         input_artifacts: list[ArtifactEnvelope],
         results: list[ToolCallResult],
+        *,
+        max_tool_calls: int,
     ) -> list[ToolCallResult]:
         """Subclass hook for deterministic coverage checks after the LLM loop."""
         return results
@@ -414,11 +440,13 @@ class SpecialistAgent(ABC):
         task: TaskEnvelope,
         input_artifacts: list[ArtifactEnvelope],
         tool_schemas: list[dict],
+        *,
+        max_tool_calls: int,
     ) -> list[ToolCallResult]:
         """ReAct loop: LLM decides one tool call or one independent batch per step."""
         results: list[ToolCallResult] = []
 
-        while len(results) < _MAX_TOOL_CALLS_PER_SPECIALIST:
+        while len(results) < max_tool_calls:
             step_num = len(results) + 1
             max_parallel = _max_parallel_tool_calls()
             prompt = _REACT_STEP_PROMPT.format(
@@ -483,7 +511,7 @@ class SpecialistAgent(ABC):
                 )
                 break
 
-            remaining_capacity = _MAX_TOOL_CALLS_PER_SPECIALIST - len(results)
+            remaining_capacity = max_tool_calls - len(results)
             if len(requested_calls) > remaining_capacity:
                 _log.warning(
                     "%s: ReAct step %d returned %d calls; executing first %d due to max_tool_calls.",
@@ -510,6 +538,7 @@ class SpecialistAgent(ABC):
                     "parallel_group_id": parallel_group_id,
                     "parallel_index": position if parallel_group_id else None,
                     "parallel_size": len(requested_calls) if parallel_group_id else None,
+                    "selection_scope": request.selection_scope,
                 }
                 call_key = self._tool_call_key(request)
 
@@ -586,6 +615,7 @@ class SpecialistAgent(ABC):
                         parallel_group_id=parallel_group_id,
                         parallel_index=position if parallel_group_id else None,
                         parallel_size=len(requested_calls) if parallel_group_id else None,
+                        selection_scope=request.selection_scope,
                     )
 
             for position in range(1, len(requested_calls) + 1):
@@ -639,7 +669,13 @@ class SpecialistAgent(ABC):
         if decision.tool_calls:
             return decision.tool_calls
         if decision.tool_name:
-            return [ToolCallRequest(tool_name=decision.tool_name, args=decision.args or {})]
+            return [
+                ToolCallRequest(
+                    tool_name=decision.tool_name,
+                    args=decision.args or {},
+                    selection_scope=decision.selection_scope,
+                )
+            ]
         return []
 
     def _already_succeeded(
@@ -650,13 +686,22 @@ class SpecialistAgent(ABC):
         call_key = self._tool_call_key(request)
         return any(
             result.status == "ok"
-            and self._tool_call_key(ToolCallRequest(tool_name=result.tool_name, args=result.args))
+            and self._tool_call_key(
+                ToolCallRequest(
+                    tool_name=result.tool_name,
+                    args=result.args,
+                    selection_scope=result.selection_scope,
+                )
+            )
             == call_key
             for result in prior_results
         )
 
     def _tool_call_key(self, request: ToolCallRequest) -> str:
-        return f"{request.tool_name}:{json.dumps(request.args or {}, sort_keys=True, default=str)}"
+        return (
+            f"{request.tool_name}:{request.selection_scope}:"
+            f"{json.dumps(request.args or {}, sort_keys=True, default=str)}"
+        )
 
     async def _execute_tool_calls(
         self,
@@ -697,6 +742,7 @@ class SpecialistAgent(ABC):
         requests: list[ToolCallRequest],
         *,
         message: str,
+        max_tool_calls: int,
     ) -> list[ToolCallResult]:
         """Execute deterministic coverage calls, skipping calls that already succeeded."""
         if not self.enable_parallel:
@@ -713,6 +759,8 @@ class SpecialistAgent(ABC):
             seen.add(key)
             executable.append(request)
 
+        remaining_capacity = max(max_tool_calls - len(existing_results), 0)
+        executable = executable[:remaining_capacity]
         if not executable:
             return []
 
@@ -739,6 +787,7 @@ class SpecialistAgent(ABC):
                 parallel_group_id=parallel_group_id,
                 parallel_index=index if parallel_group_id else None,
                 parallel_size=len(executable) if parallel_group_id else None,
+                selection_scope=request.selection_scope,
             )
             new_results.append(result)
             self.event_stream.emit(

@@ -34,6 +34,7 @@ from agent.supervisor_specialist.schemas import (
     CaseState,
     ConversationMemory,
     DialogTurnRecord,
+    ExecutionBudget,
     GraphState,
     TimeWindow,
 )
@@ -228,7 +229,12 @@ def build_graph(deps: Dependencies, checkpointer=None):
                         }
                     }
                 )
-                result = await specialist.run(task)
+                budget = state.get("execution_budget") or ExecutionBudget()
+                result = await specialist.run(
+                    task,
+                    max_tool_calls=budget.remaining_tool_calls,
+                )
+                budget.record_tool_calls(len(result.tool_calls))
                 artifacts = result.artifacts
                 deps.artifact_store.save_many(artifacts)
 
@@ -254,6 +260,7 @@ def build_graph(deps: Dependencies, checkpointer=None):
                     "last_artifacts": artifacts,
                     "turn_artifact_ids": _unique(turn_artifact_ids),
                     "turn_tool_calls": turn_tool_calls,
+                    "execution_budget": budget,
                     "current_task": None,
                     "next_node": "supervisor",
                     "error_message": None,
@@ -292,6 +299,11 @@ def build_graph(deps: Dependencies, checkpointer=None):
         )
         memory = state.get("conversation_memory") or ConversationMemory()
         old_case_state = state.get("case_state")
+        incoming_budget = state.get("execution_budget") or ExecutionBudget()
+        turn_budget = ExecutionBudget(
+            max_specialist_dispatches=incoming_budget.max_specialist_dispatches,
+            max_tool_calls=incoming_budget.max_tool_calls,
+        )
 
         if old_case_state is None:
             case_state = CaseState(
@@ -340,6 +352,8 @@ def build_graph(deps: Dependencies, checkpointer=None):
             "turn_index": state.get("turn_index", 0) + 1,
             "turn_artifact_ids": [],
             "turn_tool_calls": [],
+            "execution_budget": turn_budget,
+            "structured_result": None,
         }
 
     async def respond_to_user_node(state: GraphState) -> GraphState:
@@ -388,6 +402,7 @@ def build_graph(deps: Dependencies, checkpointer=None):
             tool_calls=state.get("turn_tool_calls", []),
             root_cause=case_state.root_cause,
             recommended_actions=case_state.recommended_actions,
+            structured_result=state.get("structured_result"),
         )
         memory.active_site = case_state.site
         memory.active_asset_ids = case_state.asset_ids

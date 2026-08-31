@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .data import (
     activities,
@@ -28,6 +28,8 @@ from .data import (
 
 class QueryFilter(BaseModel):
     """AND-combined filters; multiple values within one field are OR-combined."""
+
+    model_config = ConfigDict(extra="forbid")
 
     activities: list[str] = Field(
         default_factory=list,
