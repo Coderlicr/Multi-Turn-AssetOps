@@ -1,0 +1,460 @@
+{
+  "run_id": "stirrup_mt_WTB01",
+  "scenario_id": "WTB01",
+  "runner": "stirrup-agent-multi-turn",
+  "model": "litellm_proxy/deepseek-v4-flash",
+  "question": "User turn 1: How many of our jobs are replacements versus repairs?\nUser turn 2: Ok, and of the replacements, which equipment shows up most?\nUser turn 3: Wait \u2014 does 'change out' count as a replacement here?\nUser turn 4: Right, with that in mind give me the top three.",
+  "answer": "Top three replaced equipment classes (all replacement jobs, including \"change out\" since those are tagged Replace):\n\n1. **Lines & drives** \u2014 89 jobs\n2. **Engines & motors** \u2014 44 jobs\n3. **Structural/mounting parts** \u2014 36 jobs",
+  "trajectory": {
+    "user_turns": [
+      {
+        "index": 0,
+        "user_message": "How many of our jobs are replacements versus repairs?",
+        "answer": "Replacements: **347** jobs\nRepairs: **127** jobs\n\n(There are 1,076 total work orders in the corpus; the remainder are Inspect, Service, Diagnose, Adjust, and Calibrate jobs.)",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__group_count",
+                  "input": {
+                    "by": "activity"
+                  },
+                  "id": "call_00_tEdaAZZePZxBW4KiIhiI7583",
+                  "output": "{\n  \"by\": \"activity\",\n  \"matched_work_orders\": 1076,\n  \"groups\": [\n    {\n      \"value\": \"Replace\",\n      \"count\": 347\n    },\n    {\n      \"value\": \"Repair\",\n      \"count\": 127\n    },\n    {\n      \"value\": \"Inspect\",\n      \"count\": 62\n    },\n    {\n      \"value\": \"Service\",\n      \"count\": 40\n    },\n    {\n      \"value\": \"Diagnose\",\n      \"count\": 31\n    },\n    {\n      \"value\": \"Adjust\",\n      \"count\": 10\n    },\n    {\n      \"value\": \"Calibrate\",\n      \"count\": 10\n    }\n  ]\n}",
+                  "duration_ms": 15.889000031165779
+                }
+              ],
+              "input_tokens": 4051,
+              "output_tokens": 197,
+              "duration_ms": 3962.024000007659
+            },
+            {
+              "index": 1,
+              "text": "Replacements: **347** jobs\nRepairs: **127** jobs\n\n(There are 1,076 total work orders in the corpus; the remainder are Inspect, Service, Diagnose, Adjust, and Calibrate jobs.)",
+              "tool_calls": [],
+              "input_tokens": 4445,
+              "output_tokens": 147,
+              "duration_ms": 1987.580707995221
+            },
+            {
+              "index": 2,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "Replacements: **347** jobs\nRepairs: **127** jobs\n\n(There are 1,076 total work orders in the corpus; the remainder are Inspect, Service, Diagnose, Adjust, and Calibrate jobs.)",
+                    "reason": "Answered the replacements vs. repairs question using group_count by activity across the full corpus."
+                  },
+                  "id": "call_00_fyfkXr4mrxlc2u7G2YJ63519",
+                  "output": "Replacements: **347** jobs\nRepairs: **127** jobs\n\n(There are 1,076 total work orders in the corpus; the remainder are Inspect, Service, Diagnose, Adjust, and Calibrate jobs.)",
+                  "duration_ms": 0.12933299876749516
+                }
+              ],
+              "input_tokens": 4623,
+              "output_tokens": 147,
+              "duration_ms": 1660.6210420140997
+            }
+          ],
+          "started_at": "2026-09-04T11:38:32.781623+00:00"
+        },
+        "started_at": "2026-09-04T11:38:32.781623+00:00",
+        "duration_ms": 7655.359084019437
+      },
+      {
+        "index": 1,
+        "user_message": "Ok, and of the replacements, which equipment shows up most?",
+        "answer": "Of the 347 replacement jobs, the most-replaced equipment class is **Lines & drives** with **89** jobs, followed by Engines & motors (44) and Structural/mounting parts (36).",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__rank",
+                  "input": {
+                    "by": "object_class",
+                    "n": 10,
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ]
+                    },
+                    "patient_of_activity": "Replace"
+                  },
+                  "id": "call_00_NaAQNpHAlg8XVZltSWFl6149",
+                  "output": "Error executing tool rank: 3 validation errors for rankArguments\nfilter.object_terms\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nfilter.fault_modes\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nfilter.text_contains\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type",
+                  "duration_ms": 4.478707967791706
+                }
+              ],
+              "input_tokens": 4871,
+              "output_tokens": 206,
+              "duration_ms": 2070.9565830184147
+            },
+            {
+              "index": 1,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__group_count",
+                  "input": {
+                    "by": "object_class",
+                    "patient_of_activity": "Replace",
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ]
+                    }
+                  },
+                  "id": "call_00_sLv1tKE8U3xMibxRdTBD9618",
+                  "output": "Error executing tool group_count: 3 validation errors for group_countArguments\nfilter.object_terms\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nfilter.fault_modes\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nfilter.text_contains\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type",
+                  "duration_ms": 4.167709033936262
+                }
+              ],
+              "input_tokens": 5267,
+              "output_tokens": 1037,
+              "duration_ms": 8661.585124966223
+            },
+            {
+              "index": 2,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__group_count",
+                  "input": {
+                    "by": "object_class",
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "object_terms": [],
+                      "fault_modes": [],
+                      "text_contains": []
+                    },
+                    "patient_of_activity": "Replace"
+                  },
+                  "id": "call_00_ExAcCZqOMjLC72DOBcEC2632",
+                  "output": "{\n  \"by\": \"object_class\",\n  \"matched_work_orders\": 347,\n  \"groups\": [\n    {\n      \"value\": \"Lines & drives\",\n      \"count\": 89\n    },\n    {\n      \"value\": \"Engines & motors\",\n      \"count\": 44\n    },\n    {\n      \"value\": \"Structural/mounting parts\",\n      \"count\": 36\n    },\n    {\n      \"value\": \"Pumps/fans/generators\",\n      \"count\": 29\n    },\n    {\n      \"value\": \"Sensors & gauges\",\n      \"count\": 19\n    },\n    {\n      \"value\": \"Transformers/gearboxes\",\n      \"count\": 19\n    },\n    {\n      \"value\": \"Valves/breakers/switches\",\n      \"count\": 19\n    },\n    {\n      \"value\": \"Filters & separators\",\n      \"count\": 18\n    },\n    {\n      \"value\": \"Guards & protective parts\",\n      \"count\": 17\n    },\n    {\n      \"value\": \"Covers & seals\",\n      \"count\": 12\n    },\n    {\n      \"value\": \"RestrictingObject\",\n      \"count\": 11\n    },\n    {\n      \"value\": \"Tanks & storage\",\n      \"count\": 9\n    },\n    {\n      \"value\": \"EmittingObject\",\n      \"count\": 8\n    },\n    {\n      \"value\": \"HumanInteractionObject\",\n      \"count\": 6\n    },\n    {\n      \"value\": \"InterfacingObject\",\n      \"count\": 6\n    },\n    {\n      \"value\": \"Displays & alarms\",\n      \"count\": 5\n    },\n    {\n      \"value\": \"InformationProcessingObject\",\n      \"count\": 1\n    },\n    {\n      \"value\": \"Substance\",\n      \"count\": 1\n    }\n  ]\n}",
+                  "duration_ms": 9.663375036325306
+                }
+              ],
+              "input_tokens": 6496,
+              "output_tokens": 269,
+              "duration_ms": 2629.521458002273
+            },
+            {
+              "index": 3,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "Of the 347 replacement jobs, the most-replaced equipment class is **Lines & drives** with **89** jobs, followed by Engines & motors (44) and Structural/mounting parts (36).",
+                    "reason": "Ranked replaced components (patients of the Replace activity) by object class across the 347 replacement work orders."
+                  },
+                  "id": "call_00_9tIU21Mfpz1DGQQDF4031853",
+                  "output": "Of the 347 replacement jobs, the most-replaced equipment class is **Lines & drives** with **89** jobs, followed by Engines & motors (44) and Structural/mounting parts (36).",
+                  "duration_ms": 0.09058398427441716
+                }
+              ],
+              "input_tokens": 7214,
+              "output_tokens": 224,
+              "duration_ms": 2250.4545000265352
+            }
+          ],
+          "started_at": "2026-09-04T11:38:40.436990+00:00"
+        },
+        "started_at": "2026-09-04T11:38:40.436990+00:00",
+        "duration_ms": 15675.773499999195
+      },
+      {
+        "index": 2,
+        "user_message": "Wait \u2014 does 'change out' count as a replacement here?",
+        "answer": "**Yes.** In this dataset, \"change out\" is normalized to the **Replace** activity. All **141** work orders whose text contains \"change out\" are tagged as Replace (e.g., WO 127 \"change out ... thrust bearing\" and WO 390 \"change out leaking transmission hose\" are both annotated `Activity/MaintenanceActivity/Replace`), so they are included in the 347 replacement count.",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__search",
+                  "input": {
+                    "filter": {
+                      "text_contains": [
+                        "change out"
+                      ],
+                      "object_terms": [],
+                      "fault_modes": [],
+                      "activities": []
+                    }
+                  },
+                  "id": "call_00_evpEUxXFarmcDAGlgr302898",
+                  "output": "{\n  \"count\": 141,\n  \"wo_ids\": [\n    127,\n    128,\n    129,\n    130,\n    131,\n    132,\n    133,\n    134,\n    135,\n    136,\n    137,\n    138,\n    139,\n    140,\n    141,\n    142,\n    143,\n    144,\n    145,\n    146,\n    147,\n    148,\n    149,\n    150,\n    151,\n    152,\n    153,\n    154,\n    155,\n    156,\n    157,\n    158,\n    159,\n    160,\n    161,\n    162,\n    163,\n    164,\n    165,\n    166,\n    167,\n    168,\n    169,\n    170,\n    171,\n    172,\n    173,\n    174,\n    175,\n    176,\n    177,\n    178,\n    179,\n    180,\n    181,\n    182,\n    183,\n    184,\n    185,\n    186,\n    238,\n    261,\n    262,\n    263,\n    331,\n    390,\n    403,\n    419,\n    433,\n    457,\n    467,\n    517,\n    533,\n    534,\n    535,\n    536,\n    537,\n    538,\n    539,\n    540,\n    541,\n    542,\n    543,\n    544,\n    545,\n    546,\n    547,\n    548,\n    549,\n    550,\n    551,\n    552,\n    553,\n    554,\n    555,\n    556,\n    557,\n    558,\n    559,\n    560,\n    561,\n    562,\n    563,\n    564,\n    565,\n    566,\n    567,\n    568,\n    569,\n    570,\n    571,\n    572,\n    573,\n    574,\n    575,\n    576,\n    577,\n    578,\n    579,\n    580,\n    581,\n    582,\n    583,\n    584,\n    585,\n    586,\n    587,\n    588,\n    589,\n    590,\n    591,\n    592,\n    593,\n    594,\n    595,\n    596,\n    597,\n    598,\n    777,\n    840,\n    948\n  ]\n}",
+                  "duration_ms": 7.608040992636234
+                }
+              ],
+              "input_tokens": 7533,
+              "output_tokens": 374,
+              "duration_ms": 3486.681917042006
+            },
+            {
+              "index": 1,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__group_count",
+                  "input": {
+                    "by": "activity",
+                    "within_ids": [
+                      127,
+                      128,
+                      129,
+                      130,
+                      131,
+                      132,
+                      133,
+                      134,
+                      135,
+                      136,
+                      137,
+                      138,
+                      139,
+                      140,
+                      141,
+                      142,
+                      143,
+                      144,
+                      145,
+                      146,
+                      147,
+                      148,
+                      149,
+                      150,
+                      151,
+                      152,
+                      153,
+                      154,
+                      155,
+                      156,
+                      157,
+                      158,
+                      159,
+                      160,
+                      161,
+                      162,
+                      163,
+                      164,
+                      165,
+                      166,
+                      167,
+                      168,
+                      169,
+                      170,
+                      171,
+                      172,
+                      173,
+                      174,
+                      175,
+                      176,
+                      177,
+                      178,
+                      179,
+                      180,
+                      181,
+                      182,
+                      183,
+                      184,
+                      185,
+                      186,
+                      238,
+                      261,
+                      262,
+                      263,
+                      331,
+                      390,
+                      403,
+                      419,
+                      433,
+                      457,
+                      467,
+                      517,
+                      533,
+                      534,
+                      535,
+                      536,
+                      537,
+                      538,
+                      539,
+                      540,
+                      541,
+                      542,
+                      543,
+                      544,
+                      545,
+                      546,
+                      547,
+                      548,
+                      549,
+                      550,
+                      551,
+                      552,
+                      553,
+                      554,
+                      555,
+                      556,
+                      557,
+                      558,
+                      559,
+                      560,
+                      561,
+                      562,
+                      563,
+                      564,
+                      565,
+                      566,
+                      567,
+                      568,
+                      569,
+                      570,
+                      571,
+                      572,
+                      573,
+                      574,
+                      575,
+                      576,
+                      577,
+                      578,
+                      579,
+                      580,
+                      581,
+                      582,
+                      583,
+                      584,
+                      585,
+                      586,
+                      587,
+                      588,
+                      589,
+                      590,
+                      591,
+                      592,
+                      593,
+                      594,
+                      595,
+                      596,
+                      597,
+                      598,
+                      777,
+                      840,
+                      948
+                    ]
+                  },
+                  "id": "call_00_DBKqx3QyS175HUwH4DPt7480",
+                  "output": "{\n  \"by\": \"activity\",\n  \"matched_work_orders\": 141,\n  \"groups\": [\n    {\n      \"value\": \"Replace\",\n      \"count\": 141\n    }\n  ]\n}",
+                  "duration_ms": 5.300708988215774
+                }
+              ],
+              "input_tokens": 8385,
+              "output_tokens": 570,
+              "duration_ms": 3302.9542500153184
+            },
+            {
+              "index": 2,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__get_text",
+                  "input": {
+                    "wo_id": 127
+                  },
+                  "id": "call_00_q5gc9ZNglCP33QrCubmb1126",
+                  "output": "{\n  \"wo_id\": 127,\n  \"text\": \"<id> change out <id> thrust bearing oil\",\n  \"tokens\": [\n    \"<id>\",\n    \"change\",\n    \"out\",\n    \"<id>\",\n    \"thrust\",\n    \"bearing\",\n    \"oil\"\n  ],\n  \"entities\": [\n    {\n      \"text\": \"change out\",\n      \"type\": \"Activity/MaintenanceActivity/Replace\"\n    },\n    {\n      \"text\": \"thrust bearing\",\n      \"type\": \"PhysicalObject/HoldingObject/JointingObject\"\n    },\n    {\n      \"text\": \"bearing\",\n      \"type\": \"PhysicalObject/HoldingObject/JointingObject\"\n    },\n    {\n      \"text\": \"oil\",\n      \"type\": \"PhysicalObject/ProtectingObject/WearProtectingObject\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"head\": 0,\n      \"tail\": 3,\n      \"type\": \"hasParticipant/hasPatient\"\n    },\n    {\n      \"head\": 1,\n      \"tail\": 2,\n      \"type\": \"isA\"\n    },\n    {\n      \"head\": 1,\n      \"tail\": 3,\n      \"type\": \"contains\"\n    }\n  ]\n}",
+                  "duration_ms": 6.045041955076158
+                },
+                {
+                  "name": "maintie__get_text",
+                  "input": {
+                    "wo_id": 390
+                  },
+                  "id": "call_01_7FzXDbpDa8w1VdEH0OIh0430",
+                  "output": "{\n  \"wo_id\": 390,\n  \"text\": \"change out leaking transmission hose\",\n  \"tokens\": [\n    \"change\",\n    \"out\",\n    \"leaking\",\n    \"transmission\",\n    \"hose\"\n  ],\n  \"entities\": [\n    {\n      \"text\": \"change out\",\n      \"type\": \"Activity/MaintenanceActivity/Replace\"\n    },\n    {\n      \"text\": \"leaking\",\n      \"type\": \"Process/UndesirableProcess\"\n    },\n    {\n      \"text\": \"transmission\",\n      \"type\": \"PhysicalObject/TransformingObject/MechanicalEnergyTransformingObject\"\n    },\n    {\n      \"text\": \"hose\",\n      \"type\": \"PhysicalObject/GuidingObject/ClosedEnclosureGuidingObject\"\n    }\n  ],\n  \"relations\": [\n    {\n      \"head\": 1,\n      \"tail\": 3,\n      \"type\": \"hasParticipant/hasAgent\"\n    },\n    {\n      \"head\": 2,\n      \"tail\": 3,\n      \"type\": \"hasPart\"\n    },\n    {\n      \"head\": 0,\n      \"tail\": 3,\n      \"type\": \"hasParticipant/hasPatient\"\n    }\n  ]\n}",
+                  "duration_ms": 3.1209579901769757
+                }
+              ],
+              "input_tokens": 9038,
+              "output_tokens": 497,
+              "duration_ms": 4349.258208007086
+            },
+            {
+              "index": 3,
+              "text": "**Yes.** In this dataset, \"change out\" is normalized to the **Replace** activity. All **141** work orders whose text contains \"change out\" are tagged as Replace (e.g., WO 127 \"change out ... thrust bearing\" and WO 390 \"change out leaking transmission hose\" are both annotated `Activity/MaintenanceActivity/Replace`), so they are included in the 347 replacement count.",
+              "tool_calls": [],
+              "input_tokens": 10108,
+              "output_tokens": 139,
+              "duration_ms": 1712.0369999902323
+            },
+            {
+              "index": 4,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "**Yes.** In this dataset, \"change out\" is normalized to the **Replace** activity. All **141** work orders whose text contains \"change out\" are tagged as Replace (e.g., WO 127 \"change out ... thrust bearing\" and WO 390 \"change out leaking transmission hose\" are both annotated `Activity/MaintenanceActivity/Replace`), so they are included in the 347 replacement count.",
+                    "reason": "Confirmed via search for text \"change out\" (141 WOs) and group_count showing all are tagged Replace; verified sample annotations."
+                  },
+                  "id": "call_00_57KyWq60gAKAM1X3W3Cs2214",
+                  "output": "**Yes.** In this dataset, \"change out\" is normalized to the **Replace** activity. All **141** work orders whose text contains \"change out\" are tagged as Replace (e.g., WO 127 \"change out ... thrust bearing\" and WO 390 \"change out leaking transmission hose\" are both annotated `Activity/MaintenanceActivity/Replace`), so they are included in the 347 replacement count.",
+                  "duration_ms": 0.08837500354275107
+                }
+              ],
+              "input_tokens": 10278,
+              "output_tokens": 400,
+              "duration_ms": 3823.8964999909513
+            }
+          ],
+          "started_at": "2026-09-04T11:38:56.112745+00:00"
+        },
+        "started_at": "2026-09-04T11:38:56.112745+00:00",
+        "duration_ms": 16759.710749960504
+      },
+      {
+        "index": 3,
+        "user_message": "Right, with that in mind give me the top three.",
+        "answer": "Top three replaced equipment classes (all replacement jobs, including \"change out\" since those are tagged Replace):\n\n1. **Lines & drives** \u2014 89 jobs\n2. **Engines & motors** \u2014 44 jobs\n3. **Structural/mounting parts** \u2014 36 jobs",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "The top three replaced equipment classes among all replacement jobs (which already include the \"change out\" jobs, since those are tagged Replace):\n\n1. **Lines & drives** \u2014 89 jobs\n2. **Engines & motors** \u2014 44 jobs\n3. **Structural/mounting parts** \u2014 36 jobs",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "Top three replaced equipment classes (all replacement jobs, including \"change out\" since those are tagged Replace):\n\n1. **Lines & drives** \u2014 89 jobs\n2. **Engines & motors** \u2014 44 jobs\n3. **Structural/mounting parts** \u2014 36 jobs",
+                    "reason": "Reported top three object classes ranked as patients of the Replace activity across all 347 replacement work orders (change-out jobs already included as Replace)."
+                  },
+                  "id": "call_00_BYckcEATRCc2GQznsPnF9793",
+                  "output": "Top three replaced equipment classes (all replacement jobs, including \"change out\" since those are tagged Replace):\n\n1. **Lines & drives** \u2014 89 jobs\n2. **Engines & motors** \u2014 44 jobs\n3. **Structural/mounting parts** \u2014 36 jobs",
+                  "duration_ms": 0.13287499314174056
+                }
+              ],
+              "input_tokens": 10814,
+              "output_tokens": 1905,
+              "duration_ms": 14662.75516699534
+            }
+          ],
+          "started_at": "2026-09-04T11:39:12.872437+00:00"
+        },
+        "started_at": "2026-09-04T11:39:12.872437+00:00",
+        "duration_ms": 14676.206125004683
+      }
+    ],
+    "started_at": "2026-09-04T11:38:32.200340+00:00"
+  }
+}

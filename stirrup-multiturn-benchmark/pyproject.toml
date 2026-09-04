@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stirrup_benchmark"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/stirrup_benchmark/maintie/data" = "stirrup_benchmark/maintie/data"
+
+[project]
+name = "stirrup-multiturn-benchmark"
+version = "0.1.0"
+description = "Standalone multi-turn benchmark for Stirrup over the MaintIE corpus"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Stirrup 0.2 imports the MCP 1.x streamable-http client API.
+    "mcp>=1.26.0,<2",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.0",
+    "stirrup[litellm,mcp]>=0.2.0,<0.3",
+]
+
+[project.scripts]
+maintie-mcp-server = "stirrup_benchmark.maintie.server:main"
+stirrup-multi-turn = "stirrup_benchmark.cli:main"
+evaluate-multi-turn = "stirrup_benchmark.evaluate:main"
+compare-multi-turn = "stirrup_benchmark.compare:main"
+build-multi-turn-data = "stirrup_benchmark.dataset_builder:main"
+check-stirrup-mcp = "stirrup_benchmark.selfcheck:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-anyio>=0.0.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+anyio_mode = "auto"
+
+[tool.ruff]
+line-length = 88

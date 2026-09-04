@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "candidate_scenarios": 66,
+  "candidate_user_turns": 215,
+  "valid_multi_turn": 66,
+  "executable": 50,
+  "formal_evaluation_set": 50,
+  "by_source": {
+    "existing_16_dialogs": 16,
+    "mentor_wtb50": 50
+  },
+  "paired_single_turn_controls": 50,
+  "decision": "WTB50 is the executable main set. A16 remains a development set until scenario manifests and per-turn ground truth are curated."
+}

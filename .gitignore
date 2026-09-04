@@ -229,3 +229,10 @@ eval/results/
 
 # TSFM model artifacts generated during eval runs
 tuned_models/
+
+# This branch intentionally vendors two complete, reproducible Stirrup benchmark
+# implementations, including their JSON/JSONL fixtures and test directories.
+!assetopsbench/
+!assetopsbench/**
+!stirrup-multiturn-benchmark/
+!stirrup-multiturn-benchmark/**

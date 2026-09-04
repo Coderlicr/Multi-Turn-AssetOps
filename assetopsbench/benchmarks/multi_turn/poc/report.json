@@ -1,0 +1,128 @@
+{
+  "scenario_count": 1,
+  "optimal_path_rate": 0.25,
+  "accomplish_progress_rate": 1.0,
+  "overall_task_success_rate": 1.0,
+  "results": [
+    {
+      "scenario_id": "WTB01",
+      "paired_scenario_id": null,
+      "user_turns_expected": 4,
+      "user_turns_observed": 4,
+      "optimal_path_rate": 0.25,
+      "accomplish_progress_rate": 1.0,
+      "no_tool_decision_accuracy": 0.5,
+      "context_retention": 1.0,
+      "error_propagation_resilience": 1.0,
+      "overall_task_success": true,
+      "capabilities": {
+        "reference_resolution": 1.0,
+        "information_accumulation": 1.0,
+        "constraint_update": 1.0,
+        "cross_turn_tool_use": 0.3333333333333333
+      },
+      "turns": [
+        {
+          "turn_id": 1,
+          "turn_type": "task",
+          "path_correct": true,
+          "answer_scored": true,
+          "answer_correct": true,
+          "tool_decision_correct": true,
+          "turn_success": true,
+          "actual_tool_plan": [
+            [
+              "maintie__group_count"
+            ]
+          ],
+          "accepted_tool_plans": [
+            [
+              [
+                "count",
+                "count"
+              ]
+            ],
+            [
+              [
+                "group_count"
+              ]
+            ],
+            [
+              [
+                "compare"
+              ]
+            ]
+          ]
+        },
+        {
+          "turn_id": 2,
+          "turn_type": "follow",
+          "path_correct": false,
+          "answer_scored": true,
+          "answer_correct": true,
+          "tool_decision_correct": true,
+          "turn_success": true,
+          "actual_tool_plan": [
+            [
+              "maintie__rank"
+            ],
+            [
+              "maintie__group_count"
+            ],
+            [
+              "maintie__group_count"
+            ]
+          ],
+          "accepted_tool_plans": [
+            [
+              [
+                "rank"
+              ]
+            ]
+          ]
+        },
+        {
+          "turn_id": 3,
+          "turn_type": "clarify",
+          "path_correct": false,
+          "answer_scored": false,
+          "answer_correct": null,
+          "tool_decision_correct": false,
+          "turn_success": null,
+          "actual_tool_plan": [
+            [
+              "maintie__search"
+            ],
+            [
+              "maintie__group_count"
+            ],
+            [
+              "maintie__get_text",
+              "maintie__get_text"
+            ]
+          ],
+          "accepted_tool_plans": [
+            []
+          ]
+        },
+        {
+          "turn_id": 4,
+          "turn_type": "follow",
+          "path_correct": false,
+          "answer_scored": true,
+          "answer_correct": true,
+          "tool_decision_correct": false,
+          "turn_success": true,
+          "actual_tool_plan": [],
+          "accepted_tool_plans": [
+            [
+              [
+                "rank"
+              ]
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}
