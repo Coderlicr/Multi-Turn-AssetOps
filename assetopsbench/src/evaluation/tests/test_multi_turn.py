@@ -3,9 +3,8 @@
 from pathlib import Path
 
 from benchmark.multi_turn_schema import load_scenarios
-from evaluation.multi_turn import answer_matches, score_conversation
+from evaluation.multi_turn import _bare_tool_name, answer_matches, score_conversation
 from evaluation.multi_turn_compare import compare_reports
-
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -31,6 +30,12 @@ def test_answer_match_accepts_grounded_natural_language():
         "There are 347 replacements and 127 repairs.",
         {"replace": 347, "repair": 127},
     )
+
+
+def test_tool_name_normalization_supports_every_mcp_server():
+    assert _bare_tool_name("maintie__rank") == "rank"
+    assert _bare_tool_name("iot__installed_sensors") == "installed_sensors"
+    assert _bare_tool_name("fmsr.get_failure_modes") == "get_failure_modes"
 
 
 def test_wtb01_perfect_trace_scores_all_turns():

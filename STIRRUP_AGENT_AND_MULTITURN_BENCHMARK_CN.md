@@ -514,6 +514,53 @@ compare
 
 它们不会被自动算成正确答案；工具/不使用工具的决策仍可独立评估。
 
+### 7.7 当前两场景静态 JSON 试运行（2026-09-05）
+
+根据当前试运行要求，只选择两个场景：
+
+```text
+A16-06   来自旧 16 个多轮对话
+WTB01    来自新 50 个多轮对话
+```
+
+它们使用 AssetOpsBench 原有的场景目录约定，并增加一个多轮文件：
+
+```text
+src/couchdb/scenarios_data/scenario_<id>/
+├── manifest.json       运行前需要装载的环境状态
+├── question.txt        便于人阅读的完整对话文本
+├── groundtruth.txt     最终答案的静态 JSON 真值
+└── conversation.json   有序用户轮次、跨轮依赖和工具期望
+```
+
+loader 会强制验证 `conversation.json` 最后一轮的 `ground_truth` 与
+`groundtruth.txt` 完全相同，防止两份真值发生漂移。
+
+`A16-06` 是对旧场景的可执行 pilot 改编：原始 16 个场景的审计 JSONL 仍保持
+原样并标记为 development；试运行目录单独补充了场景级 CouchDB manifest、
+故障模式数据以及可静态评分的最终输出约束。这不代表旧 16 个场景已经全部
+具备可执行真值。
+
+`WTB01` 使用 MaintIE 的 1,076 条只读工单，不需要 CouchDB，因此它的
+`manifest.json` 是空对象。
+
+本次默认设置为：
+
+```text
+Agent:                  Stirrup 0.2.0 / StirrupAgentRunner
+Model:                  tokenrouter/z-ai/glm-5.3-free
+Temperature:            0
+Reasoning effort:       不显式传入，使用 provider 默认值
+Code execution:         关闭
+Agent-step budget:      每个真实用户轮次 12 步
+Conversation state:     一个持续存在的 Stirrup + MCP session
+Final scorer:           static_json 严格结构匹配
+```
+
+标准评估仍写出完整报告；额外的 `poor-performance.json` 只保留最终答案未通过
+严格静态 JSON 匹配的场景。如果两个场景都通过，该文件中的
+`poor_scenarios` 是空数组。
+
 ---
 
 ## 8. 当前 Benchmark 在哪里
@@ -637,57 +684,53 @@ cd /Users/brianbai/Multi-Turn-AssetOps/assetopsbench
 uv sync --group dev
 ```
 
-### 9.2 重建数据
+### 9.2 检查两场景配置（不调用模型和数据库）
 
 ```bash
-uv run python scripts/build_multi_turn_dataset.py
+DRY_RUN=1 ./benchmarks/run_multi_turn.sh
 ```
 
-### 9.3 无模型 dry-run
+### 9.3 准备本地凭证与 CouchDB
 
 ```bash
-uv run stirrup-multi-turn \
-  --scenarios benchmarks/multi_turn/data/wtb50.jsonl \
-  --scenario-ids WTB01 \
-  --trajectory-dir /tmp/assetopsbench-multiturn \
-  --dry-run
+cp .env.public .env
+# 在 .env 中设置 TOKENROUTER_API_KEY，不要提交该文件
+docker compose -f src/couchdb/docker-compose.yaml up -d
 ```
 
-### 9.4 真实四轮运行
+`TOKENROUTER_BASE_URL` 默认为 `https://api.tokenrouter.com/v1`。截至
+2026-09-05，TokenRouter 当前模型页将 `z-ai/glm-5.3-free` 列为输入和输出均
+为零费用的 OpenAI-compatible 模型：
 
-以 OpenAI-compatible router 为例：
+```text
+https://www.tokenrouter.com/models/z-ai/glm-5.3-free/
+```
+
+### 9.4 只运行两个场景并严格评分
+
+默认脚本已经固定 `A16-06,WTB01`，运行命令为：
 
 ```bash
-uv run stirrup-multi-turn \
-  --env-file ../.env \
-  --router-env-prefix DEEPSEEK \
-  --model-id litellm_proxy/deepseek-v4-flash \
-  --scenarios benchmarks/multi_turn/data/wtb50.jsonl \
-  --scenario-ids WTB01 \
-  --trajectory-dir benchmarks/multi_turn/results/trajectories
+ENV_FILE=.env ./benchmarks/run_multi_turn.sh
 ```
 
-### 9.5 评分
+脚本按以下顺序执行：
 
-```bash
-uv run evaluate-multi-turn \
-  --scenarios benchmarks/multi_turn/data/wtb50.jsonl \
-  --trajectories benchmarks/multi_turn/results/trajectories \
-  --output benchmarks/multi_turn/results/report.json
+1. 按场景 manifest 重置和装载 CouchDB；
+2. 在同一场景内保持一个 Stirrup session，逐轮运行；
+3. 使用官方 `evaluate` 命令和 `static_json` scorer 比对最终答案；
+4. 从完整报告中筛出低表现场景。
+
+输出位置：
+
+```text
+benchmarks/multi_turn/results/two_scenario_pilot/
+├── trajectories/                 完整运行轨迹
+├── static-json-report/            官方完整评分报告
+└── poor-performance.json          只含未通过场景
 ```
 
-### 9.6 一条 shell 命令运行和评分
-
-```bash
-ENV_FILE=../.env \
-ROUTER_ENV_PREFIX=DEEPSEEK \
-MODEL_ID=litellm_proxy/deepseek-v4-flash \
-SCENARIO_IDS=WTB01 \
-./benchmarks/run_multi_turn.sh
-```
-
-将 `SCENARIO_IDS` 设为 `all` 会运行正式集合中的全部 50 个场景，并产生相应
-模型 API 费用。
+除非显式覆盖 `SCENARIO_IDS`，此命令不会扩展到其他场景。
 
 ---
 
@@ -853,10 +896,16 @@ stirrup_mt_<scenario-id>.json
 依赖官方源码的多轮版：
 
 ```text
-相关 Stirrup/Multi-turn/MaintIE tests: 51 passed
-Ruff:                                  passed
-git diff --check:                      passed
+两场景/多轮/评估相关 tests:             78 passed
+两场景 dry-run:                         passed
+static_json 失败筛选链路:                passed
+Ruff:                                   passed
+git diff --check:                       passed
 ```
+
+真实 TokenRouter/GLM 运行需要本机设置 `TOKENROUTER_API_KEY`。在没有该凭证
+时，不生成或冒充模型结果；仍可完整执行 schema、dry-run、CouchDB 数据和
+静态评分链路验证。
 
 独立版：
 
@@ -906,4 +955,3 @@ TOKENROUTER_API_KEY
 也可以通过 `--router-env-prefix` 将其他前缀的变量仅在当前进程中映射到
 LiteLLM 变量。不要将真实 `.env`、API key 或模型 provider token 提交到
 任一目录。
-

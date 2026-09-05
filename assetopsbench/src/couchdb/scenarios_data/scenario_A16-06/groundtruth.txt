@@ -1,0 +1,7 @@
+{
+  "failure_modes": [
+    "condenser fouling",
+    "refrigerant leakage",
+    "compressor oil pressure loss"
+  ]
+}

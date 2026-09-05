@@ -1,0 +1,11 @@
+User turn 1:
+How many of our jobs are replacements versus repairs?
+
+User turn 2:
+Ok, and of the replacements, which equipment shows up most?
+
+User turn 3:
+Wait — does 'change out' count as a replacement here?
+
+User turn 4:
+Right, with that in mind give me the top three. Return only JSON in this shape: {"top3":[["equipment class",count],["equipment class",count],["equipment class",count]]}. Do not add commentary.

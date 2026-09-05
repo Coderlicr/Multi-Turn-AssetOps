@@ -1,0 +1,8 @@
+User turn 1:
+I am new to this system. What sites and assets are available for monitoring?
+
+User turn 2:
+What sensors does Chiller 6 have, and what kinds of analysis can I run on the data?
+
+User turn 3:
+What failure modes can be detected using these sensors? Return only a JSON object with one key, "failure_modes", whose value is the complete list of matching failure-mode names in catalog order. Do not add commentary.

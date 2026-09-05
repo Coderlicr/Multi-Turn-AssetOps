@@ -34,11 +34,36 @@ def metrics_from_trajectory(record: PersistedTrajectory) -> OpsMetrics:
     if traj is None:
         return OpsMetrics()
 
+    if isinstance(traj, dict) and "user_turns" in traj:
+        return _from_conversation_trajectory(traj, record.model)
     if isinstance(traj, dict) and "turns" in traj:
         return _from_sdk_trajectory(traj, record.model)
     if isinstance(traj, list):
         return _from_plan_execute(traj, record.model)
     return OpsMetrics()
+
+
+def _from_conversation_trajectory(traj: dict, model: str) -> OpsMetrics:
+    """Aggregate nested Stirrup steps across real user turns."""
+    user_turns = traj.get("user_turns", []) or []
+    agent_steps: list[dict] = []
+    user_turn_durations: list[float] = []
+    for user_turn in user_turns:
+        if not isinstance(user_turn, dict):
+            continue
+        nested = user_turn.get("trajectory") or {}
+        if isinstance(nested, dict):
+            agent_steps.extend(
+                step for step in (nested.get("turns") or []) if isinstance(step, dict)
+            )
+        duration = user_turn.get("duration_ms")
+        if isinstance(duration, (int, float)) and not isinstance(duration, bool):
+            user_turn_durations.append(float(duration))
+
+    metrics = _from_sdk_trajectory({"turns": agent_steps}, model)
+    if user_turn_durations:
+        metrics.duration_ms = sum(user_turn_durations)
+    return metrics
 
 
 def _from_sdk_trajectory(traj: dict, model: str) -> OpsMetrics:
@@ -50,7 +75,9 @@ def _from_sdk_trajectory(traj: dict, model: str) -> OpsMetrics:
         if isinstance(raw_events, list):
             tokens_in, tokens_out = _usage_from_raw_events(raw_events)
 
-    durations_ms = [t.get("duration_ms") for t in turns if t.get("duration_ms") is not None]
+    durations_ms = [
+        t.get("duration_ms") for t in turns if t.get("duration_ms") is not None
+    ]
     duration_ms = sum(durations_ms) if durations_ms else None
 
     tool_names: list[str] = []
@@ -106,7 +133,9 @@ def _usage_from_raw_events(events: list[Any]) -> tuple[int, int]:
         for item in _walk_dicts(event):
             tokens = item.get("tokens")
             if isinstance(tokens, dict):
-                cache = tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+                cache = (
+                    tokens.get("cache") if isinstance(tokens.get("cache"), dict) else {}
+                )
                 input_tokens += (
                     _token_count(tokens.get("input"))
                     + _token_count(cache.get("read"))
@@ -138,11 +167,7 @@ def _from_plan_execute(steps: list[Any], model: str) -> OpsMetrics:
     # plan-execute persists ``list[StepResult]``; the dataclass exposes
     # ``server`` / ``tool`` / ``response`` fields but no per-step token
     # counts, so we surface what is available and leave the rest at zero.
-    tool_names = [
-        s.get("tool")
-        for s in steps
-        if isinstance(s, dict) and s.get("tool")
-    ]
+    tool_names = [s.get("tool") for s in steps if isinstance(s, dict) and s.get("tool")]
     return OpsMetrics(
         turn_count=len(steps),
         tool_call_count=len(tool_names),
@@ -206,9 +231,7 @@ def aggregate_ops(results: list[ScenarioResult]) -> AggregateOps:
     return AggregateOps(
         tokens_in_total=sum(r.ops.tokens_in for r in results),
         tokens_out_total=sum(r.ops.tokens_out for r in results),
-        est_input_cost_usd_total=(
-            round(sum(input_costs), 6) if input_costs else None
-        ),
+        est_input_cost_usd_total=(round(sum(input_costs), 6) if input_costs else None),
         est_output_cost_usd_total=(
             round(sum(output_costs), 6) if output_costs else None
         ),

@@ -61,6 +61,39 @@ The versioned schema is implemented in
 information accumulation, constraint update, cross-turn tool use, and
 correction/clarification.
 
+The current two-scenario pilot uses the repository's canonical folder layout:
+
+```text
+src/couchdb/scenarios_data/
+├── scenario_A16-06/
+│   ├── manifest.json
+│   ├── question.txt
+│   ├── groundtruth.txt
+│   ├── conversation.json
+│   └── failure_modes.json
+└── scenario_WTB01/
+    ├── manifest.json
+    ├── question.txt
+    ├── groundtruth.txt
+    └── conversation.json
+```
+
+`manifest.json`, `question.txt`, and `groundtruth.txt` retain the standard
+AssetOpsBench meaning. `conversation.json` is the multi-turn extension: it
+stores the ordered user messages and turn-level dependency/tool metadata. The
+loader requires the final turn's `ground_truth` to exactly equal the JSON in
+`groundtruth.txt`, preventing the two truth sources from drifting.
+
+Only two cases are selected for the pilot:
+
+- `A16-06`, curated from the old 16-dialog set and backed by scenario-local
+  CouchDB data;
+- `WTB01`, selected from the new 50-dialog set and backed by the bundled,
+  read-only MaintIE corpus.
+
+The legacy JSONL files remain available for dataset audit and full-set
+experiments. The folder scenarios are the executable, static-JSON pilot.
+
 ## Dataset audit result
 
 Run the reproducible audit:
@@ -88,7 +121,58 @@ The WTB set runs against the bundled read-only MaintIE MCP server over the 1,076
 record manually corrected release. It does not use CouchDB and cannot mutate
 the corpus.
 
-## Run
+## Run the two-scenario static-JSON pilot
+
+The checked benchmark setting is:
+
+| Setting | Value |
+| --- | --- |
+| Agent | Stirrup 0.2.0 through `StirrupAgentRunner` |
+| Model | `tokenrouter/z-ai/glm-5.3-free` |
+| TokenRouter endpoint | `https://api.tokenrouter.com/v1` |
+| Sampling temperature | `0` |
+| Reasoning effort | omitted; provider default |
+| Code execution | disabled |
+| Agent-step budget | 12 per real user turn |
+| Conversation state | one persistent Stirrup and MCP session |
+| Final scorer | `static_json`, strict structured match |
+
+As of 2026-09-05, TokenRouter's model page lists `z-ai/glm-5.3-free` with
+zero input and output price and the OpenAI-compatible chat-completions API:
+<https://www.tokenrouter.com/models/z-ai/glm-5.3-free/>.
+
+Set credentials locally (never commit them):
+
+```bash
+cp .env.public .env
+# Set TOKENROUTER_API_KEY in .env. Keep the default TOKENROUTER_BASE_URL.
+```
+
+`A16-06` needs CouchDB because its state comes from `manifest.json`:
+
+```bash
+docker compose -f src/couchdb/docker-compose.yaml up -d
+```
+
+Review the exact run without model or database calls:
+
+```bash
+DRY_RUN=1 ./benchmarks/run_multi_turn.sh
+```
+
+Run only the two pilot scenarios and evaluate their final answers:
+
+```bash
+ENV_FILE=.env ./benchmarks/run_multi_turn.sh
+```
+
+The full static-JSON report is written under
+`benchmarks/multi_turn/results/two_scenario_pilot/static-json-report/`. The
+shareable report is `poor-performance.json`; it contains only scenarios that
+fail strict static-JSON matching. If both pass, its `poor_scenarios` array is
+empty.
+
+## Legacy JSONL run
 
 Validate configuration without a model call:
 
@@ -121,12 +205,13 @@ For an environment whose credentials use another prefix, such as
 `--router-env-prefix DEEPSEEK`. Values are mapped in process and are never
 copied into the repository.
 
-The shell entry point runs both commands. `SCENARIO_IDS=all` selects the full
-main set:
+For the JSONL path, run and evaluate with the legacy multi-turn evaluator:
 
 ```bash
-ENV_FILE=.env MODEL_ID=litellm_proxy/your-model SCENARIO_IDS=all \
-  ./benchmarks/run_multi_turn.sh
+uv run evaluate-multi-turn \
+  --scenarios benchmarks/multi_turn/data/wtb50.jsonl \
+  --trajectories benchmarks/multi_turn/results/trajectories \
+  --output benchmarks/multi_turn/results/report.json
 ```
 
 Run the paired control file into a separate output directory, evaluate it, and

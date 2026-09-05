@@ -7,6 +7,7 @@ import asyncio
 import dataclasses
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,10 +18,10 @@ from agent.stirrup_agent.runner import StirrupAgentRunner
 from benchmark.multi_turn_schema import MultiTurnScenario, load_scenarios
 from observability import init_tracing, set_run_context
 
-
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SCENARIOS = ROOT / "benchmarks/multi_turn/data/wtb50.jsonl"
+DEFAULT_SCENARIOS = ROOT / "src/couchdb/scenarios_data"
 DEFAULT_OUTPUT = ROOT / "traces/trajectories/multi_turn"
+DEFAULT_MODEL = "tokenrouter/z-ai/glm-5.3-free"
 SERVER_ENTRYPOINTS = {**DEFAULT_SERVER_PATHS, "maintie": "maintie-mcp-server"}
 
 
@@ -48,6 +49,42 @@ def server_paths_for(scenario: MultiTurnScenario) -> dict[str, Path | str]:
             f"{scenario.scenario_id} requires unavailable MCP servers: {', '.join(missing)}"
         )
     return {name: SERVER_ENTRYPOINTS[name] for name in scenario.required_tools}
+
+
+def scenario_manifest(scenarios_path: Path, scenario_id: str) -> dict | None:
+    """Return a folder scenario's CouchDB manifest, or ``None`` for JSONL input."""
+    if not scenarios_path.is_dir():
+        return None
+    path = scenarios_path / f"scenario_{scenario_id}" / "manifest.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise TypeError(f"{path} must contain a JSON object")
+    return payload
+
+
+def prepare_couchdb_state(
+    scenarios_path: Path, scenario_id: str, *, dry_run: bool = False
+) -> bool:
+    """Reset and load CouchDB when a folder scenario declares DB collections.
+
+    An empty manifest is an explicit declaration that the scenario uses only
+    non-CouchDB tools (WTB01 uses the bundled read-only MaintIE server), so no
+    local database is required for that case.
+    """
+    manifest = scenario_manifest(scenarios_path, scenario_id)
+    if not manifest:
+        return False
+
+    env = os.environ.copy()
+    env["SCENARIOS_DATA_DIR"] = str(scenarios_path.resolve())
+    commands = [
+        [sys.executable, "src/couchdb/init_data.py", "--reset-only"],
+        [sys.executable, "src/couchdb/init_data.py", scenario_id],
+    ]
+    if not dry_run:
+        for command in commands:
+            subprocess.run(command, check=True, cwd=ROOT, env=env)
+    return True
 
 
 async def run_scenario(
@@ -88,15 +125,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scenarios", type=Path, default=DEFAULT_SCENARIOS)
     parser.add_argument(
         "--scenario-ids",
-        default="WTB01",
-        help="Comma-separated IDs, or 'all' (default: WTB01 PoC).",
+        default="A16-06,WTB01",
+        help="Comma-separated IDs, or 'all' (default: the two-scenario pilot).",
     )
     parser.add_argument(
         "--model-id",
-        default="watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8",
+        default=DEFAULT_MODEL,
     )
     parser.add_argument("--reasoning-effort", default=None)
-    parser.add_argument("--temperature", type=float, default=None)
+    parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-turns", type=int, default=12)
     parser.add_argument("--trajectory-dir", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--env-file", type=Path, default=None)
@@ -121,6 +158,7 @@ async def _run(args: argparse.Namespace) -> int:
     failures = 0
     for scenario in scenarios:
         run_id = f"stirrup_mt_{scenario.scenario_id}"
+        needs_couchdb = bool(scenario_manifest(args.scenarios, scenario.scenario_id))
         if args.dry_run:
             print(
                 json.dumps(
@@ -131,12 +169,18 @@ async def _run(args: argparse.Namespace) -> int:
                         "servers": list(server_paths_for(scenario)),
                         "model": args.model_id,
                         "code_enabled": False,
+                        "temperature": args.temperature,
+                        "reasoning_effort": args.reasoning_effort,
+                        "max_steps_per_user_turn": args.max_turns,
+                        "state_setup": "couchdb" if needs_couchdb else "none",
+                        "final_scorer": "static_json",
                     },
                     ensure_ascii=False,
                 )
             )
             continue
         try:
+            prepare_couchdb_state(args.scenarios, scenario.scenario_id)
             set_run_context(run_id=run_id, scenario_id=scenario.scenario_id)
             result = await run_scenario(
                 scenario,

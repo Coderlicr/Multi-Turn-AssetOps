@@ -204,3 +204,4 @@ src/tmp/
 
 # Observability artifacts (OTLP-JSON traces + per-run trajectory JSON).
 traces/
+benchmarks/multi_turn/results/

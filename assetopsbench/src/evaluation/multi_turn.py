@@ -15,7 +15,7 @@ from evaluation.scorers.static_json import parse_structured_answer
 
 
 def _bare_tool_name(name: str) -> str:
-    return name.replace("maintie__", "").rsplit(".", 1)[-1]
+    return name.split("__", 1)[-1].rsplit(".", 1)[-1]
 
 
 def canonical_plan(plan: list[list[str]]) -> tuple[tuple[str, ...], ...]:
