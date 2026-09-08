@@ -8,6 +8,20 @@ docker compose -f src/couchdb/docker-compose.yaml up -d
 uv run plan-execute --show-plan --show-history "What is the current date and time? Also list assets at site MAIN."
 ```
 
+Stirrup can use the same MCP servers through TokenRouter. Its default server
+set is `iot`, `utilities`, `fmsr`, `tsfm`, and `wo` (`vibration` is excluded):
+
+```bash
+uv run stirrup-agent --no-code \
+  --reference-date 2020-06-20 \
+  --model-id tokenrouter/<model-name> \
+  "List the assets available at site MAIN."
+```
+
+The Stirrup code-execution track is enabled by default. See
+[`INSTRUCTIONS.md`](INSTRUCTIONS.md#stirrup-agent) for Docker/local backend and
+workspace-preservation options.
+
 `docker compose` initializes the IoT CouchDB database from `src/couchdb/sample_data/iot/main.json`, filtered to `Chiller 3`, `Chiller 4`, `Chiller 6`, and `Chiller 9`.
 
 To verify the imported sample data:
@@ -19,25 +33,6 @@ Supervisor-Specialists Architecture Examples:
 ```
 uv run supervisor-specialist --reference-date 2020-06-20 "The temperature of our chiller at Site MAIN seems unusually high lately. Can you look into it?"
 uv run supervisor-specialist --reference-date 2020-06-20 "I want to compare the efficiency of Chiller 6 and Chiller 9 at the MAIN site over the past month."
-```
-
-Your `.env` file should be like (fill `WATSONX_APIKEY` and `WATSONX_PROJECT_ID` first):
-```
-# ── CouchDB (IoTAgent server) ────────────────────────────────────────────────
-COUCHDB_URL=http://localhost:5984
-IOT_DBNAME=chiller
-WO_DBNAME=workorder
-COUCHDB_USERNAME=admin
-COUCHDB_PASSWORD=password
-
-# ── IBM WatsonX (plan-execute runner) ────────────────────────────────────────
-WATSONX_APIKEY=
-WATSONX_PROJECT_ID=
-WATSONX_URL=https://us-south.ml.cloud.ibm.com   # optional
-
-# ── LiteLLM (plan-execute runner) ────────────────────────────────────────────
-LITELLM_API_KEY=
-LITELLM_BASE_URL=
 ```
 
 ## Repository Layout
@@ -60,9 +55,16 @@ LITELLM_BASE_URL=
 - `plan_execute/` — `Planner` / `Executor` / `Summariser` submodules
 - `models.py` — data models (`Plan`, `StepResult`, etc.)
 
+### Stirrup Runner — `src/agent/stirrup_agent/`
+
+- `cli.py` — entry point for the `stirrup-agent` command
+- `runner.py` — TokenRouter-aware Stirrup runner and five-server MCP defaults
+- `workspace_bridge.py` — makes file-producing MCP results available to code execution
+
 ### LLM Backends — `src/llm/`
 
 - `litellm.py` — LiteLLM / WatsonX backend implementation
+- `routers.py` — LiteLLM Proxy / TokenRouter prefix and credential resolution
 - `base.py` — abstract `LLMBackend` interface
 
 ### Infrastructure

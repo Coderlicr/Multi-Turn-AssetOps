@@ -32,6 +32,7 @@ dependencies = [
     "scipy>=1.10.0",
     "langgraph>=0.2",
     "wandb>=0.26.1",
+    "stirrup[docker,litellm,mcp]>=0.2.0",
 ]
 
 [project.scripts]
@@ -43,6 +44,7 @@ tsfm-mcp-server = "servers.tsfm.main:main"
 wo-mcp-server = "servers.wo.main:main"
 vibration-mcp-server = "servers.vibration.main:main"
 supervisor-specialist = "agent.supervisor_specialist.cli:main"
+stirrup-agent = "agent.stirrup_agent.cli:main"
 
 
 [dependency-groups]
@@ -68,4 +70,3 @@ norecursedirs = ["src/tmp"]
 filterwarnings = [
     "ignore:Core Pydantic V1 functionality:UserWarning",
 ]
-

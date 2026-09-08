@@ -21,6 +21,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
   - [Python API](#python-api)
   - [Bring your own LLM](#bring-your-own-llm)
   - [Add more MCP servers](#add-more-mcp-servers)
+- [Stirrup Agent](#stirrup-agent)
 - [Connect to Claude Desktop](#connect-to-claude-desktop)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
@@ -49,7 +50,7 @@ Run from the **repo root**:
 uv sync
 ```
 
-`uv sync` creates a virtual environment at `.venv/`, installs all dependencies, and registers the CLI entry points (`plan-execute`, `*-mcp-server`). You can either prefix commands with `uv run` (no activation needed) or activate the venv once for your shell session:
+`uv sync` creates a virtual environment at `.venv/`, installs all dependencies, and registers the CLI entry points (`plan-execute`, `supervisor-specialist`, `stirrup-agent`, `*-mcp-server`). You can either prefix commands with `uv run` (no activation needed) or activate the venv once for your shell session:
 
 ```bash
 source .venv/bin/activate   # macOS / Linux
@@ -121,6 +122,13 @@ uv run vibration-mcp-server
 | ------------------ | ------------ | -------------------------------------------------------------------- |
 | `LITELLM_API_KEY`  | _(required)_ | LiteLLM proxy API key                                                |
 | `LITELLM_BASE_URL` | _(required)_ | LiteLLM proxy base URL, e.g. `https://your-litellm-host.example.com` |
+
+**TokenRouter** — Stirrup agent (when `--model-id` starts with `tokenrouter/`)
+
+| Variable               | Default      | Description                         |
+| ---------------------- | ------------ | ----------------------------------- |
+| `TOKENROUTER_API_KEY`  | _(required)_ | TokenRouter API key                 |
+| `TOKENROUTER_BASE_URL` | _(required)_ | OpenAI-compatible TokenRouter URL   |
 
 **Profiling** — all optional; enable by setting the relevant keys in `.env`
 
@@ -416,6 +424,54 @@ runner = PlanExecuteRunner(
 ```
 
 > **Note:** passing `server_paths` replaces the defaults entirely. Include all servers you need.
+
+---
+
+## Stirrup Agent
+
+`stirrup-agent` runs an in-process Stirrup loop over the Multi-Turn AssetOps MCP
+servers. By default it discovers 26 tools from `iot`, `utilities`, `fmsr`,
+`tsfm`, and `wo`; `vibration` is intentionally excluded from the default set.
+MCP tools are exposed to the model as `{server}__{tool}`, for example
+`iot__history_csv`.
+
+Tools-only run through TokenRouter:
+
+```bash
+uv run stirrup-agent --no-code \
+  --reference-date 2020-06-20 \
+  --model-id tokenrouter/<model-name> \
+  "List the assets available at site MAIN."
+```
+
+`--reference-date YYYY-MM-DD` anchors relative phrases such as "recent",
+"last month", and "past 30 days". When omitted, Stirrup uses today's UTC date.
+
+The code track is enabled by default. Use the local backend when Python needs
+to read a host-side file returned by an MCP tool:
+
+```bash
+uv run stirrup-agent --code-backend local \
+  --reference-date 2020-06-20 \
+  --model-id tokenrouter/<model-name> \
+  "Fetch Chiller 6 history and analyse its numeric columns."
+```
+
+For Docker-backed code execution, build the image once:
+
+```bash
+docker build -f src/agent/stirrup_agent/Dockerfile.code -t assetops-code .
+```
+
+Override the complete default server set with repeatable `--server` arguments:
+
+```bash
+uv run stirrup-agent --no-code \
+  --server vibration=vibration-mcp-server \
+  "List known bearings."
+```
+
+Passing any `--server` option replaces the defaults rather than extending them.
 
 ---
 
