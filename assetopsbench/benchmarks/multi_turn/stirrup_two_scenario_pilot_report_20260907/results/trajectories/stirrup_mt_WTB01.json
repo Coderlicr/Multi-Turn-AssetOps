@@ -1,0 +1,661 @@
+{
+  "run_id": "stirrup_mt_WTB01",
+  "scenario_id": "WTB01",
+  "runner": "stirrup-agent-multi-turn",
+  "model": "tokenrouter/z-ai/glm-5.3-free",
+  "question": "User turn 1: How many of our jobs are replacements versus repairs?\nUser turn 2: Ok, and of the replacements, which equipment shows up most?\nUser turn 3: Wait \u2014 does 'change out' count as a replacement here?\nUser turn 4: Right, with that in mind give me the top three. Return only JSON in this shape: {\"top3\":[[\"equipment class\",count],[\"equipment class\",count],[\"equipment class\",count]]}. Do not add commentary.",
+  "answer": "{\"top3\":[[\"Lines & drives\",89],[\"Engines & motors\",44],[\"Structural/mounting parts\",36]]}",
+  "trajectory": {
+    "user_turns": [
+      {
+        "index": 0,
+        "user_message": "How many of our jobs are replacements versus repairs?",
+        "answer": "Replacements vs. repairs:\n- Replace: 347 jobs (~32%)\n- Repair: 127 jobs (~12%)\n\nReplacements outnumber repairs by roughly 2.7 to 1. (The remaining ~602 jobs involve other activities such as Inspect, Service, Diagnose, Adjust, and Calibrate.)",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__group_count",
+                  "input": {
+                    "by": "activity"
+                  },
+                  "id": "call_8151a45faf26999e",
+                  "output": "{\n  \"by\": \"activity\",\n  \"matched_work_orders\": 1076,\n  \"groups\": [\n    {\n      \"value\": \"Replace\",\n      \"count\": 347\n    },\n    {\n      \"value\": \"Repair\",\n      \"count\": 127\n    },\n    {\n      \"value\": \"Inspect\",\n      \"count\": 62\n    },\n    {\n      \"value\": \"Service\",\n      \"count\": 40\n    },\n    {\n      \"value\": \"Diagnose\",\n      \"count\": 31\n    },\n    {\n      \"value\": \"Adjust\",\n      \"count\": 10\n    },\n    {\n      \"value\": \"Calibrate\",\n      \"count\": 10\n    }\n  ]\n}",
+                  "duration_ms": 20.87020900216885
+                }
+              ],
+              "input_tokens": 3728,
+              "output_tokens": 97,
+              "duration_ms": 44525.01970799858
+            },
+            {
+              "index": 1,
+              "text": "**Replacements vs. repairs:**\n\n- **Replace:** 347 jobs (~32%)\n- **Repair:** 127 jobs (~12%)\n\nReplacements outnumber repairs by roughly 2.7 to 1. (For context, the remaining ~602 jobs involve other activities such as Inspect, Service, Diagnose, Adjust, and Calibrate.)",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "Replacements vs. repairs:\n- Replace: 347 jobs (~32%)\n- Repair: 127 jobs (~12%)\n\nReplacements outnumber repairs by roughly 2.7 to 1. (The remaining ~602 jobs involve other activities such as Inspect, Service, Diagnose, Adjust, and Calibrate.)",
+                    "reason": "Grouped all 1,076 work orders by activity; Replace = 347 and Repair = 127."
+                  },
+                  "id": "call_8fabc6cc72bcaf66",
+                  "output": "Replacements vs. repairs:\n- Replace: 347 jobs (~32%)\n- Repair: 127 jobs (~12%)\n\nReplacements outnumber repairs by roughly 2.7 to 1. (The remaining ~602 jobs involve other activities such as Inspect, Service, Diagnose, Adjust, and Calibrate.)",
+                  "duration_ms": 0.10400000246590935
+                }
+              ],
+              "input_tokens": 3931,
+              "output_tokens": 260,
+              "duration_ms": 10769.487375000608
+            }
+          ],
+          "started_at": "2026-09-07T15:58:00.731841+00:00"
+        },
+        "started_at": "2026-09-07T15:58:00.731841+00:00",
+        "duration_ms": 55331.94708299925
+      },
+      {
+        "index": 1,
+        "user_message": "Ok, and of the replacements, which equipment shows up most?",
+        "answer": "Of the 347 replacement jobs, the equipment that shows up most:\n\nTop equipment categories (replaced components):\n1. Lines & drives \u2014 89 jobs (~26% of replacements)\n2. Engines & motors \u2014 44 jobs\n3. Structural/mounting parts \u2014 36 jobs\n4. Pumps/fans/generators \u2014 29 jobs\n5. Sensors & gauges / Transformers/gearboxes / Valves/breakers/switches \u2014 19 jobs each\n\nWithin Lines & drives, the replacements break down as:\n- Tyres (mechanical energy guiding objects) \u2014 48 jobs, with 38 work orders explicitly mentioning tyres (worn, blown, or unserviceable)\n- Hoses/pipes (closed enclosure guiding objects) \u2014 32 jobs, with 28 work orders mentioning hoses (mostly leaking hydraulic, steering, and cylinder hoses)\n\nSo the single most-replaced equipment is tyres, followed closely by hoses \u2014 together they account for the bulk of the Lines & drives category, which dominates all replacement work.",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__rank",
+                  "input": {
+                    "by": "object_class",
+                    "n": 10,
+                    "patient_of_activity": "Replace"
+                  },
+                  "id": "call_95108759237d7c92",
+                  "output": "{\n  \"by\": \"object_class\",\n  \"matched_work_orders\": 1076,\n  \"groups\": [\n    {\n      \"value\": \"Lines & drives\",\n      \"count\": 89\n    },\n    {\n      \"value\": \"Engines & motors\",\n      \"count\": 44\n    },\n    {\n      \"value\": \"Structural/mounting parts\",\n      \"count\": 36\n    },\n    {\n      \"value\": \"Pumps/fans/generators\",\n      \"count\": 29\n    },\n    {\n      \"value\": \"Sensors & gauges\",\n      \"count\": 19\n    },\n    {\n      \"value\": \"Transformers/gearboxes\",\n      \"count\": 19\n    },\n    {\n      \"value\": \"Valves/breakers/switches\",\n      \"count\": 19\n    },\n    {\n      \"value\": \"Filters & separators\",\n      \"count\": 18\n    },\n    {\n      \"value\": \"Guards & protective parts\",\n      \"count\": 17\n    },\n    {\n      \"value\": \"Covers & seals\",\n      \"count\": 12\n    }\n  ],\n  \"ascending\": false\n}",
+                  "duration_ms": 12.03358400016441
+                },
+                {
+                  "name": "maintie__rank",
+                  "input": {
+                    "by": "object_type",
+                    "n": 10,
+                    "patient_of_activity": "Replace"
+                  },
+                  "id": "call_9c9cb4447cc28038",
+                  "output": "{\n  \"by\": \"object_type\",\n  \"matched_work_orders\": 1076,\n  \"groups\": [\n    {\n      \"value\": \"MechanicalEnergyGuidingObject\",\n      \"count\": 48\n    },\n    {\n      \"value\": \"ClosedEnclosureGuidingObject\",\n      \"count\": 32\n    },\n    {\n      \"value\": \"FluidPoweredDrivingObject\",\n      \"count\": 27\n    },\n    {\n      \"value\": \"GaseousFlowGeneratingObject\",\n      \"count\": 16\n    },\n    {\n      \"value\": \"MechanicalEnergyTransformingObject\",\n      \"count\": 12\n    },\n    {\n      \"value\": \"WearProtectingObject\",\n      \"count\": 12\n    },\n    {\n      \"value\": \"FasteningObject\",\n      \"count\": 11\n    },\n    {\n      \"value\": \"ElectromagneticRotationalDrivingObject\",\n      \"count\": 10\n    },\n    {\n      \"value\": \"LiquidFlowGeneratingObject\",\n      \"count\": 10\n    },\n    {\n      \"value\": \"StructuralSupportingObject\",\n      \"count\": 10\n    }\n  ],\n  \"ascending\": false\n}",
+                  "duration_ms": 5.0676659993769135
+                }
+              ],
+              "input_tokens": 4224,
+              "output_tokens": 136,
+              "duration_ms": 83095.46179099925
+            },
+            {
+              "index": 1,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__rank",
+                  "input": {
+                    "by": "object_type",
+                    "filter": {
+                      "object_terms": [
+                        "Lines & drives"
+                      ]
+                    },
+                    "n": 10,
+                    "patient_of_activity": "Replace"
+                  },
+                  "id": "call_83b4264a29a3bebf",
+                  "output": "Error executing tool rank: 3 validation errors for rankArguments\nfilter.activities\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nfilter.fault_modes\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nfilter.text_contains\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type",
+                  "duration_ms": 8.510999999998603
+                }
+              ],
+              "input_tokens": 4822,
+              "output_tokens": 309,
+              "duration_ms": 37957.82533400052
+            },
+            {
+              "index": 2,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__rank",
+                  "input": {
+                    "by": "object_type",
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "object_terms": [
+                        "Lines & drives"
+                      ]
+                    },
+                    "n": 10,
+                    "patient_of_activity": "Replace"
+                  },
+                  "id": "call_b9d701125c16a41e",
+                  "output": "Error executing tool rank: 2 validation errors for rankArguments\nfilter.fault_modes\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nfilter.text_contains\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type",
+                  "duration_ms": 4.005583999969531
+                }
+              ],
+              "input_tokens": 5044,
+              "output_tokens": 64,
+              "duration_ms": 26911.28354200191
+            },
+            {
+              "index": 3,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__rank",
+                  "input": {
+                    "by": "object_type",
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [
+                        "Lines & drives"
+                      ],
+                      "text_contains": []
+                    },
+                    "n": 10,
+                    "patient_of_activity": "Replace"
+                  },
+                  "id": "call_0b938b590d974f34be65dfa3",
+                  "output": "{\n  \"by\": \"object_type\",\n  \"matched_work_orders\": 103,\n  \"groups\": [\n    {\n      \"value\": \"MechanicalEnergyGuidingObject\",\n      \"count\": 48\n    },\n    {\n      \"value\": \"ClosedEnclosureGuidingObject\",\n      \"count\": 32\n    },\n    {\n      \"value\": \"StructuralSupportingObject\",\n      \"count\": 4\n    },\n    {\n      \"value\": \"ElectricEnergyGuidingObject\",\n      \"count\": 3\n    },\n    {\n      \"value\": \"ThermalEnergyGuidingObject\",\n      \"count\": 3\n    },\n    {\n      \"value\": \"JointingObject\",\n      \"count\": 2\n    },\n    {\n      \"value\": \"PositioningObject\",\n      \"count\": 2\n    },\n    {\n      \"value\": \"ElectricSignalGuidingObject\",\n      \"count\": 1\n    },\n    {\n      \"value\": \"ElectricityRestrictingObject\",\n      \"count\": 1\n    },\n    {\n      \"value\": \"FasteningObject\",\n      \"count\": 1\n    }\n  ],\n  \"ascending\": false\n}",
+                  "duration_ms": 9.02437499826192
+                }
+              ],
+              "input_tokens": 5228,
+              "output_tokens": 80,
+              "duration_ms": 10596.658874997956
+            },
+            {
+              "index": 4,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__search",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [
+                        "Lines & drives"
+                      ],
+                      "text_contains": []
+                    }
+                  },
+                  "id": "call_2e166f8c28f54b1baa167d4c",
+                  "output": "{\n  \"count\": 103,\n  \"wo_ids\": [\n    128,\n    129,\n    130,\n    133,\n    134,\n    138,\n    145,\n    146,\n    149,\n    151,\n    153,\n    156,\n    163,\n    164,\n    165,\n    166,\n    167,\n    169,\n    170,\n    171,\n    174,\n    176,\n    178,\n    179,\n    180,\n    184,\n    186,\n    187,\n    188,\n    189,\n    190,\n    191,\n    192,\n    193,\n    194,\n    195,\n    261,\n    262,\n    263,\n    275,\n    279,\n    285,\n    286,\n    306,\n    314,\n    320,\n    323,\n    331,\n    333,\n    347,\n    364,\n    368,\n    370,\n    377,\n    390,\n    398,\n    400,\n    407,\n    409,\n    411,\n    415,\n    427,\n    428,\n    446,\n    467,\n    474,\n    483,\n    490,\n    492,\n    495,\n    528,\n    533,\n    536,\n    542,\n    547,\n    564,\n    565,\n    574,\n    594,\n    597,\n    696,\n    698,\n    699,\n    700,\n    701,\n    706,\n    707,\n    721,\n    722,\n    723,\n    724,\n    725,\n    803,\n    805,\n    812,\n    837,\n    976,\n    1004,\n    1011,\n    1017,\n    1021,\n    1029,\n    1043\n  ]\n}",
+                  "duration_ms": 8.587959000578849
+                }
+              ],
+              "input_tokens": 5570,
+              "output_tokens": 739,
+              "duration_ms": 17452.48858299965
+            },
+            {
+              "index": 5,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__extract",
+                  "input": {
+                    "limit": 30,
+                    "wo_ids": [
+                      128,
+                      129,
+                      130,
+                      133,
+                      134,
+                      138,
+                      145,
+                      146,
+                      149,
+                      151,
+                      153,
+                      156,
+                      163,
+                      164,
+                      165,
+                      166,
+                      167,
+                      169,
+                      170,
+                      171,
+                      174,
+                      176,
+                      178,
+                      179,
+                      180,
+                      184,
+                      186,
+                      187,
+                      188,
+                      189
+                    ]
+                  },
+                  "id": "call_80101ff3481e43fe",
+                  "output": "{\n  \"matched\": 30,\n  \"returned\": 30,\n  \"records\": [\n    {\n      \"wo_id\": 128,\n      \"text\": \"<id> change out <num> x new tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 129,\n      \"text\": \"<id> change out all tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 130,\n      \"text\": \"<id> change out all tyres for off hire\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 133,\n      \"text\": \"<id> change out blown position <num> tyre\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 134,\n      \"text\": \"<id> change out blown steering hose\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Valves/breakers/switches\"\n      ],\n      \"object_types\": [\n        \"ClosedEnclosureGuidingObject\",\n        \"MechanicalMovementControllingObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 138,\n      \"text\": \"<id> change out cracked pipe on valve bank\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Valves/breakers/switches\"\n      ],\n      \"object_types\": [\n        \"ClosedEnclosureGuidingObject\",\n        \"ControllingObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 145,\n      \"text\": \"<id> change out exhaust clamp broken on left hand side [t |]\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Structural/mounting parts\"\n      ],\n      \"object_types\": [\n        \"ClosedEnclosureGuidingObject\",\n        \"PositioningObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 146,\n      \"text\": \"<id> change out front tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 149,\n      \"text\": \"<id> change out leak slew motor hose\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Engines & motors\",\n        \"Engines & motors\",\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"ElectromagneticRotationalDrivingObject\",\n        \"ElectromagneticRotationalDrivingObject\",\n        \"ClosedEnclosureGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Active failure (leak/overheat)\"\n      ]\n    },\n    {\n      \"wo_id\": 151,\n      \"text\": \"<id> change out leaking fan hoses\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Pumps/fans/generators\",\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"GaseousFlowGeneratingObject\",\n        \"ClosedEnclosureGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Active failure (leak/overheat)\"\n      ]\n    },\n    {\n      \"wo_id\": 153,\n      \"text\": \"<id> change out leaking hydraulic hose\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"ClosedEnclosureGuidingObject\",\n        \"ClosedEnclosureGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Active failure (leak/overheat)\"\n      ]\n    },\n    {\n      \"wo_id\": 156,\n      \"text\": \"<id> change out leaking steering hose\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Valves/breakers/switches\"\n      ],\n      \"object_types\": [\n        \"ClosedEnclosureGuidingObject\",\n        \"MechanicalMovementControllingObject\"\n      ],\n      \"fault_modes\": [\n        \"Active failure (leak/overheat)\"\n      ]\n    },\n    {\n      \"wo_id\": 163,\n      \"text\": \"<id> change out position <num> <num> <num> and <num> tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 164,\n      \"text\": \"<id> change out position <num> <num> and <num> tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 165,\n      \"text\": \"<id> change out position <num> and <num> tyre worn out\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Worn/degraded\"\n      ]\n    },\n    {\n      \"wo_id\": 166,\n      \"text\": \"<id> change out position <num> and <num> tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 167,\n      \"text\": \"<id> change out position <num> and <num> tyres and rims\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Structural/mounting parts\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\",\n        \"StructuralSupportingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 169,\n      \"text\": \"<id> change out position <num> tyre\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 170,\n      \"text\": \"<id> change out position <num> tyre - sensor not reading\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Sensors & gauges\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\",\n        \"SensingObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 171,\n      \"text\": \"<id> change out position <num> tyre damage\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Worn/degraded\"\n      ]\n    },\n    {\n      \"wo_id\": 174,\n      \"text\": \"<id> change out rotation shaft seal\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Lines & drives\",\n        \"Covers & seals\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\",\n        \"MechanicalEnergyGuidingObject\",\n        \"InfillingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 176,\n      \"text\": \"<id> change out steering hoses\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Valves/breakers/switches\"\n      ],\n      \"object_types\": [\n        \"ClosedEnclosureGuidingObject\",\n        \"MechanicalMovementControllingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 178,\n      \"text\": \"<id> change out unserviceable left hand bucket cylinder hose\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Engines & motors\",\n        \"Lines & drives\",\n        \"Engines & motors\"\n      ],\n      \"object_types\": [\n        \"FluidPoweredDrivingObject\",\n        \"ClosedEnclosureGuidingObject\",\n        \"FluidPoweredDrivingObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 179,\n      \"text\": \"<id> change out unserviceable position <num> tyre\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 180,\n      \"text\": \"<id> change out unserviceable right hand clam cylinder hose\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Engines & motors\",\n        \"Lines & drives\",\n        \"Engines & motors\"\n      ],\n      \"object_types\": [\n        \"FluidPoweredDrivingObject\",\n        \"ClosedEnclosureGuidingObject\",\n        \"FluidPoweredDrivingObject\"\n      ],\n      \"fault_modes\": [\n        \"Failed/broken\"\n      ]\n    },\n    {\n      \"wo_id\": 184,\n      \"text\": \"<id> change out weeping boom cylinder hose\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Engines & motors\",\n        \"Lines & drives\",\n        \"Engines & motors\"\n      ],\n      \"object_types\": [\n        \"FluidPoweredDrivingObject\",\n        \"ClosedEnclosureGuidingObject\",\n        \"FluidPoweredDrivingObject\"\n      ],\n      \"fault_modes\": [\n        \"Active failure (leak/overheat)\"\n      ]\n    },\n    {\n      \"wo_id\": 186,\n      \"text\": \"<id> change out worn position <num> tyre\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": [\n        \"Worn/degraded\"\n      ]\n    },\n    {\n      \"wo_id\": 187,\n      \"text\": \"<id> change position <num> and <num> tyre and position <num> rim\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\",\n        \"Structural/mounting parts\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\",\n        \"StructuralSupportingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 188,\n      \"text\": \"<id> change position <num> and <num> tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    },\n    {\n      \"wo_id\": 189,\n      \"text\": \"<id> change position <num> and position <num> tyres\",\n      \"activities\": [\n        \"Replace\"\n      ],\n      \"object_classes\": [\n        \"Lines & drives\"\n      ],\n      \"object_types\": [\n        \"MechanicalEnergyGuidingObject\"\n      ],\n      \"fault_modes\": []\n    }\n  ]\n}",
+                  "duration_ms": 5.848125001648441
+                }
+              ],
+              "input_tokens": 6134,
+              "output_tokens": 110,
+              "duration_ms": 11838.054208001267
+            },
+            {
+              "index": 6,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "tyre"
+                      ]
+                    }
+                  },
+                  "id": "call_8dac4931a3f696e0",
+                  "output": "{\n  \"count\": 38,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 38\n}",
+                  "duration_ms": 7.668333000765415
+                },
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "hose"
+                      ]
+                    }
+                  },
+                  "id": "call_943417fdc1cc41a4",
+                  "output": "{\n  \"count\": 28,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 28\n}",
+                  "duration_ms": 5.169250001927139
+                }
+              ],
+              "input_tokens": 9077,
+              "output_tokens": 478,
+              "duration_ms": 14065.284583000903
+            },
+            {
+              "index": 7,
+              "text": "Of the 347 replacement jobs, the equipment that shows up most:\n\n**Top equipment categories (replaced components):**\n1. **Lines & drives** \u2014 89 jobs (~26% of replacements)\n2. Engines & motors \u2014 44 jobs\n3. Structural/mounting parts \u2014 36 jobs\n4. Pumps/fans/generators \u2014 29 jobs\n5. Sensors & gauges / Transformers/gearboxes / Valves/breakers/switches \u2014 19 jobs each\n\n**Within Lines & drives**, the replacements break down as:\n- **Tyres** (mechanical energy guiding objects) \u2014 48 jobs, with 38 work orders explicitly mentioning tyres (worn, blown, or unserviceable)\n- **Hoses/pipes** (closed enclosure guiding objects) \u2014 32 jobs, with 28 work orders mentioning hoses (mostly leaking hydraulic, steering, and cylinder hoses)\n\nSo the single most-replaced equipment is **tyres**, followed closely by **hoses** \u2014 together they account for the bulk of the Lines & drives category, which dominates all replacement work.",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "Of the 347 replacement jobs, the equipment that shows up most:\n\nTop equipment categories (replaced components):\n1. Lines & drives \u2014 89 jobs (~26% of replacements)\n2. Engines & motors \u2014 44 jobs\n3. Structural/mounting parts \u2014 36 jobs\n4. Pumps/fans/generators \u2014 29 jobs\n5. Sensors & gauges / Transformers/gearboxes / Valves/breakers/switches \u2014 19 jobs each\n\nWithin Lines & drives, the replacements break down as:\n- Tyres (mechanical energy guiding objects) \u2014 48 jobs, with 38 work orders explicitly mentioning tyres (worn, blown, or unserviceable)\n- Hoses/pipes (closed enclosure guiding objects) \u2014 32 jobs, with 28 work orders mentioning hoses (mostly leaking hydraulic, steering, and cylinder hoses)\n\nSo the single most-replaced equipment is tyres, followed closely by hoses \u2014 together they account for the bulk of the Lines & drives category, which dominates all replacement work.",
+                    "reason": "Ranked replaced components by object class and type with patient_of_activity=Replace, then extracted sample records and counted tyre/hose mentions to identify the dominant replaced equipment."
+                  },
+                  "id": "call_5f4e244c07bf4482a63af238",
+                  "output": "Of the 347 replacement jobs, the equipment that shows up most:\n\nTop equipment categories (replaced components):\n1. Lines & drives \u2014 89 jobs (~26% of replacements)\n2. Engines & motors \u2014 44 jobs\n3. Structural/mounting parts \u2014 36 jobs\n4. Pumps/fans/generators \u2014 29 jobs\n5. Sensors & gauges / Transformers/gearboxes / Valves/breakers/switches \u2014 19 jobs each\n\nWithin Lines & drives, the replacements break down as:\n- Tyres (mechanical energy guiding objects) \u2014 48 jobs, with 38 work orders explicitly mentioning tyres (worn, blown, or unserviceable)\n- Hoses/pipes (closed enclosure guiding objects) \u2014 32 jobs, with 28 work orders mentioning hoses (mostly leaking hydraulic, steering, and cylinder hoses)\n\nSo the single most-replaced equipment is tyres, followed closely by hoses \u2014 together they account for the bulk of the Lines & drives category, which dominates all replacement work.",
+                  "duration_ms": 0.12795899965567514
+                }
+              ],
+              "input_tokens": 9235,
+              "output_tokens": 694,
+              "duration_ms": 35446.829041000456
+            }
+          ],
+          "started_at": "2026-09-07T15:58:56.063803+00:00"
+        },
+        "started_at": "2026-09-07T15:58:56.063803+00:00",
+        "duration_ms": 237528.66070899836
+      },
+      {
+        "index": 2,
+        "user_message": "Wait \u2014 does 'change out' count as a replacement here?",
+        "answer": "Yes \u2014 \"change out\" is counted as a replacement. All 141 work orders containing \"change out\" are annotated as Replace (141 of 141 match), so the MaintIE annotation maps \"change out\" to the Replace activity.\n\nOf the 347 replacement jobs, ~141 (~41%) use the phrase \"change out\" \u2014 including the tyre and hose jobs cited earlier (\"change out worn position tyre\", \"change out leaking hydraulic hose\", etc.). The remaining Replace jobs use other phrasings: \"replace\" appears in 150, \"install\" in 11, \"fit\" in 9, \"new\" in 8, \"supply\" in 3, \"renew\" in 1 (with some overlap between terms).\n\nSo the earlier numbers stand: 347 replacements total, and tyres/hoses (mostly \"change out\" jobs) remain the most-replaced equipment.",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "change out"
+                      ]
+                    }
+                  },
+                  "id": "call_bc79fd2f820c66cf",
+                  "output": "{\n  \"count\": 141,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 141\n}",
+                  "duration_ms": 7.842457998776808
+                },
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "change out"
+                      ]
+                    }
+                  },
+                  "id": "call_894e1ea8f03b8471",
+                  "output": "{\n  \"count\": 141,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 141\n}",
+                  "duration_ms": 5.2693340003315825
+                }
+              ],
+              "input_tokens": 9984,
+              "output_tokens": 220,
+              "duration_ms": 29782.023166997533
+            },
+            {
+              "index": 1,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "replace"
+                      ]
+                    }
+                  },
+                  "id": "call_9af9257547f98d61",
+                  "output": "{\n  \"count\": 150,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 150\n}",
+                  "duration_ms": 7.961957999214064
+                },
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "fit"
+                      ]
+                    }
+                  },
+                  "id": "call_b25aa0ec73c8a121",
+                  "output": "{\n  \"count\": 9,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 9\n}",
+                  "duration_ms": 5.027957999118371
+                }
+              ],
+              "input_tokens": 10140,
+              "output_tokens": 163,
+              "duration_ms": 31619.058000000223
+            },
+            {
+              "index": 2,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "change out",
+                        "replace"
+                      ]
+                    }
+                  },
+                  "id": "call_9b4133b19af66e8a",
+                  "output": "{\n  \"count\": 0,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 0\n}",
+                  "duration_ms": 8.17129200004274
+                },
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "change out",
+                        "fit"
+                      ]
+                    }
+                  },
+                  "id": "call_ba4876f7f075fc93",
+                  "output": "{\n  \"count\": 0,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 0\n}",
+                  "duration_ms": 5.004167000151938
+                }
+              ],
+              "input_tokens": 10296,
+              "output_tokens": 134,
+              "duration_ms": 8730.67091700068
+            },
+            {
+              "index": 3,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "install"
+                      ]
+                    }
+                  },
+                  "id": "call_ac288bb00290002b",
+                  "output": "{\n  \"count\": 11,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 11\n}",
+                  "duration_ms": 6.8312090006656945
+                },
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "new"
+                      ]
+                    }
+                  },
+                  "id": "call_89f93074dce35f59",
+                  "output": "{\n  \"count\": 8,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 8\n}",
+                  "duration_ms": 4.798833000677405
+                }
+              ],
+              "input_tokens": 10460,
+              "output_tokens": 172,
+              "duration_ms": 15202.821708000556
+            },
+            {
+              "index": 4,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "change"
+                      ]
+                    }
+                  },
+                  "id": "call_9713310174473729",
+                  "output": "{\n  \"count\": 168,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 168\n}",
+                  "duration_ms": 7.879959001002135
+                },
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "swap"
+                      ]
+                    }
+                  },
+                  "id": "call_a96892e8b0e04837",
+                  "output": "{\n  \"count\": 0,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 0\n}",
+                  "duration_ms": 4.940249997162027
+                }
+              ],
+              "input_tokens": 10616,
+              "output_tokens": 298,
+              "duration_ms": 14004.178917002719
+            },
+            {
+              "index": 5,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "supply"
+                      ]
+                    }
+                  },
+                  "id": "call_b32d74c57dd0f205",
+                  "output": "{\n  \"count\": 3,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 3\n}",
+                  "duration_ms": 7.1492909992230125
+                },
+                {
+                  "name": "maintie__count",
+                  "input": {
+                    "filter": {
+                      "activities": [
+                        "Replace"
+                      ],
+                      "fault_modes": [],
+                      "object_terms": [],
+                      "text_contains": [
+                        "renew"
+                      ]
+                    }
+                  },
+                  "id": "call_aa595ec6717a2d75",
+                  "output": "{\n  \"count\": 1,\n  \"unit\": \"work_order\",\n  \"matched_work_orders\": 1\n}",
+                  "duration_ms": 5.113333001645515
+                }
+              ],
+              "input_tokens": 10772,
+              "output_tokens": 71,
+              "duration_ms": 7440.834541997901
+            },
+            {
+              "index": 6,
+              "text": "Yes \u2014 \"change out\" is counted as a replacement. Here's the verification:\n\n- **All 141 work orders containing \"change out\" are annotated as Replace** (141 of 141 match). The MaintIE annotation maps \"change out\" to the Replace activity.\n- So of the 347 replacement jobs, ~141 (~41%) use the phrase \"change out\" \u2014 including the tyre and hose jobs I cited earlier (\"change out worn position tyre\", \"change out leaking hydraulic hose\", etc.).\n\nThe remaining Replace jobs use other phrasings: \"replace\" appears in 150, \"fit\" in 9, \"install\" in 11, \"new\" in 8, \"supply\" in 3, \"renew\" in 1 (with some overlap between terms).\n\nSo the earlier numbers stand: 347 replacements total, and tyres/hoses (mostly \"change out\" jobs) remain the most-replaced equipment.",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "Yes \u2014 \"change out\" is counted as a replacement. All 141 work orders containing \"change out\" are annotated as Replace (141 of 141 match), so the MaintIE annotation maps \"change out\" to the Replace activity.\n\nOf the 347 replacement jobs, ~141 (~41%) use the phrase \"change out\" \u2014 including the tyre and hose jobs cited earlier (\"change out worn position tyre\", \"change out leaking hydraulic hose\", etc.). The remaining Replace jobs use other phrasings: \"replace\" appears in 150, \"install\" in 11, \"fit\" in 9, \"new\" in 8, \"supply\" in 3, \"renew\" in 1 (with some overlap between terms).\n\nSo the earlier numbers stand: 347 replacements total, and tyres/hoses (mostly \"change out\" jobs) remain the most-replaced equipment.",
+                    "reason": "Verified that all 141 \"change out\" work orders carry the Replace annotation, confirming \"change out\" is included in the 347 replacement count; also profiled other replacement phrasings (replace, fit, install, new, supply, renew)."
+                  },
+                  "id": "call_8d731fedd31c2546",
+                  "output": "Yes \u2014 \"change out\" is counted as a replacement. All 141 work orders containing \"change out\" are annotated as Replace (141 of 141 match), so the MaintIE annotation maps \"change out\" to the Replace activity.\n\nOf the 347 replacement jobs, ~141 (~41%) use the phrase \"change out\" \u2014 including the tyre and hose jobs cited earlier (\"change out worn position tyre\", \"change out leaking hydraulic hose\", etc.). The remaining Replace jobs use other phrasings: \"replace\" appears in 150, \"install\" in 11, \"fit\" in 9, \"new\" in 8, \"supply\" in 3, \"renew\" in 1 (with some overlap between terms).\n\nSo the earlier numbers stand: 347 replacements total, and tyres/hoses (mostly \"change out\" jobs) remain the most-replaced equipment.",
+                  "duration_ms": 0.2973750015371479
+                }
+              ],
+              "input_tokens": 10929,
+              "output_tokens": 732,
+              "duration_ms": 78622.99395899754
+            }
+          ],
+          "started_at": "2026-09-07T16:02:53.592453+00:00"
+        },
+        "started_at": "2026-09-07T16:02:53.592453+00:00",
+        "duration_ms": 185551.74933400122
+      },
+      {
+        "index": 3,
+        "user_message": "Right, with that in mind give me the top three. Return only JSON in this shape: {\"top3\":[[\"equipment class\",count],[\"equipment class\",count],[\"equipment class\",count]]}. Do not add commentary.",
+        "answer": "{\"top3\":[[\"Lines & drives\",89],[\"Engines & motors\",44],[\"Structural/mounting parts\",36]]}",
+        "trajectory": {
+          "turns": [
+            {
+              "index": 0,
+              "text": "",
+              "tool_calls": [
+                {
+                  "name": "finish",
+                  "input": {
+                    "answer": "{\"top3\":[[\"Lines & drives\",89],[\"Engines & motors\",44],[\"Structural/mounting parts\",36]]}",
+                    "reason": "Top three replaced equipment classes from the earlier rank by object_class with patient_of_activity=Replace."
+                  },
+                  "id": "call_b84905fbfc0fc212",
+                  "output": "{\"top3\":[[\"Lines & drives\",89],[\"Engines & motors\",44],[\"Structural/mounting parts\",36]]}",
+                  "duration_ms": 0.0887079986569006
+                }
+              ],
+              "input_tokens": 11638,
+              "output_tokens": 157,
+              "duration_ms": 28342.280500000925
+            }
+          ],
+          "started_at": "2026-09-07T16:05:59.144217+00:00"
+        },
+        "started_at": "2026-09-07T16:05:59.144217+00:00",
+        "duration_ms": 28357.110166001803
+      }
+    ],
+    "started_at": "2026-09-07T15:57:59.763835+00:00"
+  }
+}

@@ -3,13 +3,34 @@
 from __future__ import annotations
 
 import json
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-CONVERSATION_FILENAME = "conversation.json"
+TURN_HEADER = re.compile(r"^User turn (\d+):\s*$", re.MULTILINE)
+
+
+def parse_question(text: str) -> list[str]:
+    """Read numbered user messages without exposing future turns to the agent."""
+    headers = list(TURN_HEADER.finditer(text))
+    if not headers:
+        raise ValueError("question.txt must use 'User turn 1:' headers")
+    if text[: headers[0].start()].strip():
+        raise ValueError("Unexpected text before the first user turn")
+    if [int(h.group(1)) for h in headers] != list(range(1, len(headers) + 1)):
+        raise ValueError("User turn numbers must be sequential from 1")
+    messages = [
+        text[
+            h.end() : headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        ].strip()
+        for i, h in enumerate(headers)
+    ]
+    if not all(messages):
+        raise ValueError("User turns must not be empty")
+    return messages
 
 
 class DependencyType(StrEnum):
@@ -67,8 +88,10 @@ class MultiTurnScenario(MultiTurn):
         actual = [turn.turn_id for turn in self.turns]
         if actual != expected:
             raise ValueError(f"turn_id values must be sequential from 1, got {actual}")
-        if self.valid_multi_turn and not any(
-            turn.dependency_types for turn in self.turns[1:]
+        if (
+            self.source != "scenario_directory"
+            and self.valid_multi_turn
+            and not any(turn.dependency_types for turn in self.turns[1:])
         ):
             raise ValueError(
                 "valid_multi_turn requires an explicit dependency after turn 1"
@@ -77,30 +100,20 @@ class MultiTurnScenario(MultiTurn):
 
 
 def _load_directory(path: Path) -> list[dict[str, Any]]:
-    """Load self-contained ``scenario_<id>`` conversation directories.
-
-    The regular AssetOpsBench contract remains authoritative for environment,
-    prompt, and final truth: ``manifest.json``, ``question.txt``, and
-    ``groundtruth.txt``.  ``conversation.json`` is the minimal multi-turn
-    extension that preserves the ordered user messages and turn metadata.
-    """
+    """Load the three-file contract; no per-turn labels are invented."""
     raw: list[dict[str, Any]] = []
     for scenario_dir in sorted(path.iterdir()):
         if not scenario_dir.is_dir():
             continue
-        conversation_path = scenario_dir / CONVERSATION_FILENAME
-        if not conversation_path.exists():
+        question_path = scenario_dir / "question.txt"
+        if not question_path.exists():
             continue
-
-        payload = json.loads(conversation_path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise TypeError(f"{conversation_path} must contain one JSON object")
-
+        question = question_path.read_text(encoding="utf-8")
+        # Existing upstream single-question directories use another runner.
+        if not TURN_HEADER.search(question):
+            continue
+        messages = parse_question(question)
         folder_id = scenario_dir.name.removeprefix("scenario_")
-        if str(payload.get("scenario_id", "")) != folder_id:
-            raise ValueError(
-                f"{conversation_path} scenario_id must match folder id {folder_id!r}"
-            )
 
         manifest_path = scenario_dir / "manifest.json"
         question_path = scenario_dir / "question.txt"
@@ -114,18 +127,41 @@ def _load_directory(path: Path) -> list[dict[str, Any]]:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict):
             raise TypeError(f"{manifest_path} must contain a JSON object")
-        if not question_path.read_text(encoding="utf-8").strip():
-            raise ValueError(f"{question_path} must not be empty")
-
         final_truth = json.loads(groundtruth_path.read_text(encoding="utf-8"))
-        turns = payload.get("turns")
-        if not isinstance(turns, list) or not turns:
-            raise ValueError(f"{conversation_path} must contain at least one turn")
-        if turns[-1].get("ground_truth") != final_truth:
-            raise ValueError(
-                f"Final turn ground_truth in {conversation_path} must exactly match "
-                f"{groundtruth_path}"
-            )
+        # Runtime server routing is derived from the declared collections.
+        tools = []
+        for server, collections in {
+            "iot": {"iot", "asset"},
+            "tsfm": {"model_catalog", "feature_catalog"},
+            "fmsr": {"failure_mode"},
+        }.items():
+            if collections.intersection(manifest):
+                tools.append(server)
+        if folder_id.startswith("WTB") and not manifest:
+            tools = ["maintie"]
+        payload = {
+            "scenario_id": folder_id,
+            "source": "scenario_directory",
+            "split": "pilot",
+            "description": folder_id,
+            "overall_user_goal": messages[0],
+            "overall_expected_outcome": "Final answer matches groundtruth.txt",
+            "required_tools": tools,
+            "executable": final_truth is not None,
+            "valid_multi_turn": len(messages) > 1,
+            "ground_truth_available": final_truth is not None,
+            "notes": "Final-answer evaluation only; per-turn truth/path labels are unavailable.",
+            "turns": [
+                {
+                    "turn_id": i + 1,
+                    "user_message": message,
+                    "dependency_on_previous_turns": "Not annotated in the three-file format",
+                    "expected_information": "See question.txt",
+                    "ground_truth": final_truth if i == len(messages) - 1 else None,
+                }
+                for i, message in enumerate(messages)
+            ],
+        }
         raw.append(payload)
     return raw
 

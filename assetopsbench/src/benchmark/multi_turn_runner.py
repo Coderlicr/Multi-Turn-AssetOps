@@ -25,6 +25,38 @@ DEFAULT_MODEL = "tokenrouter/z-ai/glm-5.3-free"
 SERVER_ENTRYPOINTS = {**DEFAULT_SERVER_PATHS, "maintie": "maintie-mcp-server"}
 
 
+class _PacedClient:
+    """Space free-tier requests; delegate model behavior to the original client."""
+
+    def __init__(self, client, interval: float):
+        self._client = client
+        self._interval = interval
+        self._last_request: float | None = None
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+    async def generate(self, messages, tools):
+        loop = asyncio.get_running_loop()
+        if self._last_request is not None:
+            delay = self._interval - (loop.time() - self._last_request)
+            if delay > 0:
+                await asyncio.sleep(delay)
+        self._last_request = loop.time()
+        return await self._client.generate(messages, tools)
+
+
+class _PilotRunner(StirrupAgentRunner):
+    def _build_client(self):
+        client = super()._build_client()
+        # Observed gateway limit: 8 requests/minute. No answer/tool rewriting.
+        if self._model_id.startswith("tokenrouter/") and self._model_id.endswith(
+            "-free"
+        ):
+            return _PacedClient(client, interval=8.0)
+        return client
+
+
 def select_scenarios(
     scenarios: list[MultiTurnScenario], selector: str
 ) -> list[MultiTurnScenario]:
@@ -100,7 +132,7 @@ async def run_scenario(
             f"{scenario.scenario_id} failed the dataset audit and is not executable: "
             f"{scenario.notes}"
         )
-    runner = StirrupAgentRunner(
+    runner = _PilotRunner(
         model=model_id,
         server_paths=server_paths_for(scenario),
         code_enabled=False,
@@ -153,6 +185,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
 async def _run(args: argparse.Namespace) -> int:
     scenarios = select_scenarios(load_scenarios(args.scenarios), args.scenario_ids)
+    unavailable = [s.scenario_id for s in scenarios if not s.executable]
+    if unavailable and not args.dry_run:
+        raise ValueError(
+            f"Formal run suspended: {', '.join(unavailable)} has no validated ground truth. "
+            "Select WTB01 to run the currently scoreable pilot."
+        )
     args.trajectory_dir.mkdir(parents=True, exist_ok=True)
     os.environ["AGENT_TRAJECTORY_DIR"] = str(args.trajectory_dir)
     failures = 0
@@ -174,6 +212,11 @@ async def _run(args: argparse.Namespace) -> int:
                         "max_steps_per_user_turn": args.max_turns,
                         "state_setup": "couchdb" if needs_couchdb else "none",
                         "final_scorer": "static_json",
+                        "evaluation_status": (
+                            "ready"
+                            if scenario.executable
+                            else "suspended_missing_ground_truth"
+                        ),
                     },
                     ensure_ascii=False,
                 )

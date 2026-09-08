@@ -1,0 +1,321 @@
+{
+  "generated_at": "2026-09-07T16:06:28.278989+00:00",
+  "runners": [
+    "stirrup-agent-multi-turn"
+  ],
+  "models": [
+    "tokenrouter/z-ai/glm-5.3-free"
+  ],
+  "totals": {
+    "scenarios": 2,
+    "scored": 2,
+    "passed": 2,
+    "pass_rate": 1.0
+  },
+  "by_scenario_type": {
+    "structured": {
+      "total": 2,
+      "passed": 2,
+      "pass_rate": 1.0
+    }
+  },
+  "ops": {
+    "tokens_in_total": 288587,
+    "tokens_out_total": 6977,
+    "est_input_cost_usd_total": null,
+    "est_output_cost_usd_total": null,
+    "duration_ms_p50": 366216.64233400044,
+    "duration_ms_p95": 492714.1847962006,
+    "tool_calls_total": 36,
+    "est_cost_usd_total": null
+  },
+  "results": [
+    {
+      "scenario_id": "A16-06",
+      "scenario_type": "structured",
+      "run_id": "stirrup_mt_A16-06",
+      "runner": "stirrup-agent-multi-turn",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
+      "question": "User turn 1: I am new to this system. What sites and assets are available for monitoring?\nUser turn 2: What sensors does Chiller 6 have, and what kinds of analysis can I run on the data?\nUser turn 3: What failure modes can be detected using these sensors? Return only a JSON object with one key, \"failure_modes\", whose value is the complete list of matching failure-mode names in catalog order. Do not add commentary.",
+      "answer": "{\"failure_modes\": [\"condenser fouling\", \"refrigerant leakage\", \"compressor oil pressure loss\"]}",
+      "score": {
+        "scorer": "static_json",
+        "passed": true,
+        "score": 1.0,
+        "rationale": "strict structured match",
+        "details": {
+          "partial_match_accuracy": 1.0,
+          "partial_exact_match_accuracy": 1.0,
+          "strict_exact_match_accuracy": 1.0,
+          "partial_similarity_score": 1.0,
+          "partial_numeric_match_accuracy": 0.0,
+          "range_match_accuracy": 0.0,
+          "delta_1_match_accuracy": 0.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "total_gold_keys": 3,
+          "total_model_keys": 3,
+          "matched_keys": 3,
+          "accepted_value_matches": 3,
+          "exact_value_matches": 3,
+          "numeric_gold_keys": 0,
+          "numeric_value_matches": 0,
+          "range_eligible_keys": 0,
+          "range_value_matches": 0,
+          "delta_1_eligible_keys": 0,
+          "delta_1_value_matches": 0,
+          "missing_keys": [],
+          "extra_keys": [],
+          "details": [
+            {
+              "key": "answer.failure_modes[0]",
+              "gold_value": "condenser fouling",
+              "model_value": "condenser fouling",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": false,
+              "range_match": null,
+              "delta_1_match": null
+            },
+            {
+              "key": "answer.failure_modes[1]",
+              "gold_value": "refrigerant leakage",
+              "model_value": "refrigerant leakage",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": false,
+              "range_match": null,
+              "delta_1_match": null
+            },
+            {
+              "key": "answer.failure_modes[2]",
+              "gold_value": "compressor oil pressure loss",
+              "model_value": "compressor oil pressure loss",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": false,
+              "range_match": null,
+              "delta_1_match": null
+            }
+          ],
+          "mode_key_match": null,
+          "mode_exactly_one_key": null,
+          "mode_required_terms": [],
+          "mode_matched_terms": [],
+          "mode_term_coverage": null
+        }
+      },
+      "ops": {
+        "turn_count": 9,
+        "tool_call_count": 10,
+        "unique_tools": [
+          "finish",
+          "fmsr__get_failure_modes",
+          "iot__assets",
+          "iot__installed_sensors",
+          "iot__measured_sensors",
+          "iot__sites",
+          "iot__stream_extent"
+        ],
+        "tokens_in": 146759,
+        "tokens_out": 2063,
+        "duration_ms": 225663.81737600022,
+        "est_cost_usd": null
+      }
+    },
+    {
+      "scenario_id": "WTB01",
+      "scenario_type": "structured",
+      "run_id": "stirrup_mt_WTB01",
+      "runner": "stirrup-agent-multi-turn",
+      "model": "tokenrouter/z-ai/glm-5.3-free",
+      "question": "User turn 1: How many of our jobs are replacements versus repairs?\nUser turn 2: Ok, and of the replacements, which equipment shows up most?\nUser turn 3: Wait — does 'change out' count as a replacement here?\nUser turn 4: Right, with that in mind give me the top three. Return only JSON in this shape: {\"top3\":[[\"equipment class\",count],[\"equipment class\",count],[\"equipment class\",count]]}. Do not add commentary.",
+      "answer": "{\"top3\":[[\"Lines & drives\",89],[\"Engines & motors\",44],[\"Structural/mounting parts\",36]]}",
+      "score": {
+        "scorer": "static_json",
+        "passed": true,
+        "score": 1.0,
+        "rationale": "strict structured match",
+        "details": {
+          "partial_match_accuracy": 1.0,
+          "partial_exact_match_accuracy": 1.0,
+          "strict_exact_match_accuracy": 1.0,
+          "partial_similarity_score": 1.0,
+          "partial_numeric_match_accuracy": 1.0,
+          "range_match_accuracy": 0.0,
+          "delta_1_match_accuracy": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "total_gold_keys": 6,
+          "total_model_keys": 6,
+          "matched_keys": 6,
+          "accepted_value_matches": 6,
+          "exact_value_matches": 6,
+          "numeric_gold_keys": 3,
+          "numeric_value_matches": 3,
+          "range_eligible_keys": 0,
+          "range_value_matches": 0,
+          "delta_1_eligible_keys": 3,
+          "delta_1_value_matches": 3,
+          "missing_keys": [],
+          "extra_keys": [],
+          "details": [
+            {
+              "key": "answer.top3[0][0]",
+              "gold_value": "lines & drives",
+              "model_value": "lines & drives",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": false,
+              "range_match": null,
+              "delta_1_match": null
+            },
+            {
+              "key": "answer.top3[0][1]",
+              "gold_value": "89",
+              "model_value": "89",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": true,
+              "range_match": null,
+              "delta_1_match": true
+            },
+            {
+              "key": "answer.top3[1][0]",
+              "gold_value": "engines & motors",
+              "model_value": "engines & motors",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": false,
+              "range_match": null,
+              "delta_1_match": null
+            },
+            {
+              "key": "answer.top3[1][1]",
+              "gold_value": "44",
+              "model_value": "44",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": true,
+              "range_match": null,
+              "delta_1_match": true
+            },
+            {
+              "key": "answer.top3[2][0]",
+              "gold_value": "structural/mounting parts",
+              "model_value": "structural/mounting parts",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": false,
+              "range_match": null,
+              "delta_1_match": null
+            },
+            {
+              "key": "answer.top3[2][1]",
+              "gold_value": "36",
+              "model_value": "36",
+              "exact": true,
+              "match_type": "exact",
+              "similarity": 1.0,
+              "accepted": true,
+              "numeric": true,
+              "range_match": null,
+              "delta_1_match": true
+            }
+          ],
+          "mode_key_match": null,
+          "mode_exactly_one_key": null,
+          "mode_required_terms": [],
+          "mode_matched_terms": [],
+          "mode_term_coverage": null
+        }
+      },
+      "ops": {
+        "turn_count": 18,
+        "tool_call_count": 26,
+        "unique_tools": [
+          "finish",
+          "maintie__count",
+          "maintie__extract",
+          "maintie__group_count",
+          "maintie__rank",
+          "maintie__search"
+        ],
+        "tokens_in": 141828,
+        "tokens_out": 4914,
+        "duration_ms": 506769.46729200066,
+        "est_cost_usd": null
+      }
+    }
+  ],
+  "score_summary": {
+    "stirrup-agent-multi-turn_tokenrouter/z-ai/glm-5.3-free": {
+      "total": 2,
+      "passed": 2,
+      "pass_rate": 1.0,
+      "ops": {
+        "tokens_in_total": 288587,
+        "tokens_out_total": 6977,
+        "est_input_cost_usd_total": null,
+        "est_output_cost_usd_total": null,
+        "duration_ms_p50": 366216.64233400044,
+        "duration_ms_p95": 492714.1847962006,
+        "tool_calls_total": 36,
+        "est_cost_usd_total": null
+      },
+      "est_cost_per_scenario_usd": null,
+      "est_cost_per_pass_usd": null,
+      "scored_results": 2,
+      "score_avg": 1.0,
+      "score_min": 1.0,
+      "score_max": 1.0,
+      "partial_match_accuracy_avg": 1.0,
+      "partial_exact_match_accuracy_avg": 1.0,
+      "strict_exact_match_accuracy_avg": 1.0,
+      "partial_similarity_score_avg": 1.0,
+      "partial_numeric_match_accuracy_avg": 0.5,
+      "range_match_accuracy_avg": 0.0,
+      "delta_1_match_accuracy_avg": 0.5,
+      "precision_avg": 1.0,
+      "recall_avg": 1.0,
+      "f1_avg": 1.0,
+      "total_gold_keys_avg": 4.5,
+      "total_model_keys_avg": 4.5,
+      "matched_keys_avg": 4.5,
+      "accepted_value_matches_avg": 4.5,
+      "exact_value_matches_avg": 4.5,
+      "numeric_gold_keys_avg": 1.5,
+      "numeric_value_matches_avg": 1.5,
+      "range_eligible_keys_avg": 0.0,
+      "range_value_matches_avg": 0.0,
+      "delta_1_eligible_keys_avg": 1.5,
+      "delta_1_value_matches_avg": 1.5,
+      "mode_key_match_avg": null,
+      "mode_exactly_one_key_avg": null,
+      "mode_term_coverage_avg": null,
+      "mode_optional_term_coverage_avg": null,
+      "car_score_avg": null,
+      "missing_keys_total": 0,
+      "extra_keys_total": 0,
+      "detail_entries_total": 9
+    }
+  }
+}

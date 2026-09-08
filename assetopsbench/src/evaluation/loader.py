@@ -100,6 +100,10 @@ def _load_scenario_dir(path: Path) -> list[Scenario]:
             scenario_id = scenario_id.removeprefix("scenario_")
 
         expected_answer = groundtruth_path.read_text(encoding="utf-8").strip()
+        if expected_answer == "null":
+            # A suspended scenario must never pass by returning literal null.
+            _log.warning("Skipping %s: ground truth is not available", scenario_id)
+            continue
         eval_metadata_path = child / "groundtruth_eval.json"
         evaluation_metadata = None
         if eval_metadata_path.exists():

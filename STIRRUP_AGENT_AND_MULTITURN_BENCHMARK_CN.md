@@ -1,5 +1,13 @@
 # Stirrup Agent 与多轮 Benchmark：源码关系、改动、位置和运行说明
 
+> 三文件格式修订：当前目录版 runner 直接从 `question.txt` 中按
+> `User turn 1:`、`User turn 2:` 分隔消息，不再依赖 `conversation.json`。
+> `groundtruth.txt` 是唯一最终真值来源。目录版没有逐轮答案及最优路径标签，
+> 因此只做最终 static_json 评分。下文中提及 conversation.json 的旧试运行
+> 结构属于历史记录。原 A16-06 chiller 故障真值未经独立验证，旧通过结果
+> 仅可作为流程验证；官方共享 FMEA 文件只有 pump 的 synthetic sample，
+> 不能作为已验证的 chiller 诊断依据。
+
 ## 1. 文档目的
 
 本文记录以下问题：

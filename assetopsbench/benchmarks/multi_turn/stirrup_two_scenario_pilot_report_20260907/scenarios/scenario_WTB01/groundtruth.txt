@@ -1,0 +1,16 @@
+{
+  "top3": [
+    [
+      "Lines & drives",
+      89
+    ],
+    [
+      "Engines & motors",
+      44
+    ],
+    [
+      "Structural/mounting parts",
+      36
+    ]
+  ]
+}

@@ -1,5 +1,37 @@
 # Stirrup Multi-Turn Benchmark
 
+## Current three-file input contract
+
+The runner now reads each user turn directly from `question.txt` using sequential
+`User turn 1:`, `User turn 2:`, etc. headers. Messages may span multiple lines.
+`conversation.json` is no longer read or required. Only `manifest.json`,
+`question.txt`, and `groundtruth.txt` are required for a scenario; supporting
+environment data belongs outside the scenario folder and is referenced by the
+manifest. Final truth is read only from `groundtruth.txt`.
+
+The three-file format contains no intermediate answer or optimal-path labels.
+Use final `static_json` scoring, not the legacy annotated JSONL evaluator, for
+these folders. MCP servers are selected from the manifest's IoT/asset, TSFM
+catalog, and failure-mode collections; empty WTB manifests select MaintIE.
+
+The A16-06 chiller truth from the first pilot is not independently validated.
+The upstream shared FMEA sample contains only pump modes and explicitly labels
+them synthetic and non-exhaustive. It must not be relabeled as verified chiller
+diagnostic data. A16-06 keeps its original Chiller 6 questions, references that
+unchanged shared sample, and has `null` in `groundtruth.txt`. Its formal run is
+suspended before any database/model activity; the evaluator excludes it. `null`
+means unavailable truth, not an expected null answer or an empty failure list.
+
+Run the currently scoreable scenario with:
+
+```bash
+SCENARIO_IDS=WTB01 ENV_FILE=.env ./benchmarks/run_multi_turn.sh
+```
+
+The default two-scenario run intentionally reports that A16-06 is suspended.
+Free TokenRouter models are paced at one request every 8 seconds after the
+gateway returned its 8-requests/minute limit. Earlier results remain historical.
+
 This directory implements the work guide's new project boundary: AssetOpsBench
 is the environment, Stirrup is the only agent under test, and conversations are
 the benchmark cases. The former Supervisor/Specialist architecture is not part
@@ -68,26 +100,23 @@ src/couchdb/scenarios_data/
 ├── scenario_A16-06/
 │   ├── manifest.json
 │   ├── question.txt
-│   ├── groundtruth.txt
-│   ├── conversation.json
-│   └── failure_modes.json
+│   └── groundtruth.txt
 └── scenario_WTB01/
     ├── manifest.json
     ├── question.txt
-    ├── groundtruth.txt
-    └── conversation.json
+    └── groundtruth.txt
 ```
 
-`manifest.json`, `question.txt`, and `groundtruth.txt` retain the standard
-AssetOpsBench meaning. `conversation.json` is the multi-turn extension: it
-stores the ordered user messages and turn-level dependency/tool metadata. The
-loader requires the final turn's `ground_truth` to exactly equal the JSON in
-`groundtruth.txt`, preventing the two truth sources from drifting.
+`manifest.json` references shared environment files, `question.txt` contains
+numbered user messages, and `groundtruth.txt` is the single final-truth source.
+Each header must be on its own line, numbered consecutively from 1. Empty turns
+and text before the first header are rejected. Intermediate scoring metadata
+remains available only in the legacy JSONL datasets.
 
 Only two cases are selected for the pilot:
 
-- `A16-06`, curated from the old 16-dialog set and backed by scenario-local
-  CouchDB data;
+- `A16-06`, retained from the old 16-dialog set, with formal scoring suspended
+  until validated Chiller 6 ground truth is available;
 - `WTB01`, selected from the new 50-dialog set and backed by the bundled,
   read-only MaintIE corpus.
 
