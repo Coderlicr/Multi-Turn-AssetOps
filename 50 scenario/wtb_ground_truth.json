@@ -1205,7 +1205,7 @@
         ]
       ],
       "result": {
-        "whole_pump": 23
+        "whole_pump": 10
       },
       "judge": false
     },
@@ -1218,7 +1218,7 @@
         ]
       ],
       "result": {
-        "pump_seal": 7
+        "pump_seal": 1
       },
       "judge": false
     },
@@ -1231,7 +1231,7 @@
         ]
       ],
       "result": {
-        "whole_pump": 23
+        "whole_pump": 10
       },
       "judge": false
     }
@@ -1836,8 +1836,8 @@
         ]
       ],
       "result": {
-        "reactive": 83,
-        "proactive": 146
+        "reactive": 55,
+        "proactive": 99
       },
       "judge": false
     },
@@ -1922,8 +1922,8 @@
         ]
       ],
       "result": {
-        "placeholder_WOs": 126,
-        "pct": 11.7
+        "placeholder_WOs": 124,
+        "pct": 11.5
       },
       "judge": false
     }
@@ -2196,7 +2196,7 @@
         ]
       ],
       "result": {
-        "replace_no_diag": 51
+        "replace_no_diag": 345
       },
       "judge": false
     },
@@ -2209,7 +2209,7 @@
         ]
       ],
       "result": {
-        "gap": 33
+        "gap": 327
       },
       "judge": true
     }
