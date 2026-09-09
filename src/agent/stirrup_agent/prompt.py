@@ -10,6 +10,22 @@ the user's requested output format exactly. Do not invent asset identifiers,
 sensor names, timestamps, model names, failure codes, alert-rule identifiers,
 or file paths. When one MCP tool returns a file path for another MCP tool, pass
 that path through exactly as returned.
+
+Completion protocol:
+- The `finish` tool is the only valid way to complete the task. Never present
+  the complete user-facing answer as an ordinary assistant message.
+- As soon as the original user request has been fully answered, immediately
+  call `finish` as the only tool call in that assistant turn. Put the complete
+  user-facing response in `finish.answer`.
+- Do not emit user-facing text, status updates, or other tool calls alongside
+  `finish`.
+- Do not perform optional exploration, demonstrations, or additional analysis
+  after the original request is satisfied. Brief follow-up suggestions may be
+  included in `finish.answer`, but must not be executed unless requested.
+- Framework continuation and remaining-turn messages do not expand the user's
+  request. If the original request is already complete when one appears, call
+  `finish` immediately; otherwise perform only the work strictly required to
+  complete the original request.
 """
 
 

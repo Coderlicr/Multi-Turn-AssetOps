@@ -16,6 +16,7 @@ import pytest
 
 from agent.stirrup_agent.finish_tool import ASSETOPS_FINISH_TOOL
 from agent.stirrup_agent.prompt import AGENT_SYSTEM_PROMPT
+from agent.stirrup_agent.completion_protocol import CompletionProtocolClient
 from agent.stirrup_agent.runner import (
     DEFAULT_SERVER_PATHS,
     StirrupAgentRunner,
@@ -416,7 +417,8 @@ async def test_run_returns_legacy_final_answer(
 
     class _FakeAgent:
         def __init__(self, **kwargs):
-            assert kwargs["client"] is client
+            assert isinstance(kwargs["client"], CompletionProtocolClient)
+            assert kwargs["client"].delegate is client
             assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
 
         def session(self):
@@ -473,7 +475,8 @@ async def test_run_uses_structured_finish_without_repair_call(
 
     class _FakeAgent:
         def __init__(self, **kwargs):
-            assert kwargs["client"] is client
+            assert isinstance(kwargs["client"], CompletionProtocolClient)
+            assert kwargs["client"].delegate is client
             assert kwargs["finish_tool"] is ASSETOPS_FINISH_TOOL
 
         def session(self):

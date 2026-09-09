@@ -33,6 +33,7 @@ import shutil
 from pathlib import Path
 
 from llm.routers import resolve_model, resolve_router_creds
+from .completion_protocol import CompletionProtocolClient
 from .finish_tool import ASSETOPS_FINISH_TOOL
 from .handoff_tools import build_handoff_tools
 from .models import AgentResult
@@ -366,7 +367,7 @@ class StirrupAgentRunner:
         )
 
         try:
-            client = self._build_client()
+            client = CompletionProtocolClient(self._build_client())
             agent = Agent(
                 client=client,
                 name="assetops",
