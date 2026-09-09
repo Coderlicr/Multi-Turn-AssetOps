@@ -78,6 +78,18 @@ examples:
         action="store_true",
         help="Enable INFO-level logs.",
     )
+    parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Disable automatic trajectory log file writing.",
+    )
+    parser.add_argument(
+        "--log-dir",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help="Trajectory log directory (default: logs/stirrup_agent).",
+    )
 
     code_group = parser.add_mutually_exclusive_group()
     code_group.add_argument(
@@ -212,6 +224,8 @@ async def _run(args: argparse.Namespace):
         temperature=args.temperature,
         reasoning_effort=args.reasoning_effort,
         reference_date=args.reference_date,
+        log_dir=args.log_dir,
+        log_enabled=not args.no_log,
     )
     return await runner.run(args.question)
 

@@ -38,6 +38,7 @@ from .handoff_tools import build_handoff_tools
 from .models import AgentResult
 from .prompt import build_agent_system_prompt
 from .trajectory import build_trajectory, final_answer
+from .trajectory_log import TrajectoryLog
 
 _log = logging.getLogger(__name__)
 
@@ -157,6 +158,8 @@ class StirrupAgentRunner:
         reasoning_effort: Optional reasoning effort passed to the Stirrup client.
         reference_date: UTC date used to resolve relative time expressions. Uses
             today's UTC date when omitted.
+        log_dir: Directory for automatically persisted trajectory JSONL files.
+        log_enabled: Disable automatic trajectory persistence when false.
     """
 
     def __init__(
@@ -172,6 +175,8 @@ class StirrupAgentRunner:
         temperature: float | None = None,
         reasoning_effort: str | None = None,
         reference_date: str | None = None,
+        log_dir: Path | str | None = None,
+        log_enabled: bool = True,
     ) -> None:
         del llm
         self._server_paths = dict(
@@ -198,6 +203,11 @@ class StirrupAgentRunner:
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
         self._reference_date = self._resolve_reference_date(reference_date)
+        self._log_dir = (
+            Path(log_dir).expanduser().resolve() if log_dir is not None else None
+        )
+        self._log_enabled = log_enabled
+        self._trajectory_log_path: Path | None = None
 
     @staticmethod
     def _resolve_reference_date(reference_date: str | None) -> str:
@@ -344,37 +354,67 @@ class StirrupAgentRunner:
         from stirrup import Agent
 
         started_at = _dt.datetime.now(_dt.UTC).isoformat()
-
-        client = self._build_client()
-        agent = Agent(
-            client=client,
-            name="assetops",
-            system_prompt=self._build_system_prompt(),
-            tools=self._build_tools(),
-            finish_tool=ASSETOPS_FINISH_TOOL,
-            max_turns=self._max_turns,
-            context_summarization_cutoff=_CONTEXT_SUMMARIZATION_CUTOFF,
-            logger=_build_full_summary_logger(),
+        trajectory_log = TrajectoryLog(
+            log_dir=self._log_dir,
+            enabled=self._log_enabled,
+        )
+        self._trajectory_log_path = trajectory_log.path if self._log_enabled else None
+        trajectory_log.write_started(
+            model=self._model_id,
+            question=question,
+            reference_date=self._reference_date,
         )
 
-        _log.info(
-            "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, workspace=%s, preserve=%s)",
-            self._model_id,
-            self._code_enabled,
-            self._code_backend,
-            self._workspace_dir,
-            self._preserve_workspace,
-        )
+        try:
+            client = self._build_client()
+            agent = Agent(
+                client=client,
+                name="assetops",
+                system_prompt=self._build_system_prompt(),
+                tools=self._build_tools(),
+                finish_tool=ASSETOPS_FINISH_TOOL,
+                max_turns=self._max_turns,
+                context_summarization_cutoff=_CONTEXT_SUMMARIZATION_CUTOFF,
+                logger=_build_full_summary_logger(),
+            )
 
-        async with agent.session() as session:
-            finish_params, history, _metadata = await session.run(question)
+            _log.info(
+                "StirrupAgentRunner: starting (model=%s, code=%s, backend=%s, workspace=%s, preserve=%s, trajectory=%s)",
+                self._model_id,
+                self._code_enabled,
+                self._code_backend,
+                self._workspace_dir,
+                self._preserve_workspace,
+                self._trajectory_log_path,
+            )
 
-        trajectory = build_trajectory(history)
-        trajectory.started_at = started_at
-        answer = final_answer(history, finish_params)
-        _log.info(
-            "StirrupAgentRunner: done (turns=%d, tool_calls=%d)",
-            len(trajectory.turns),
-            len(trajectory.all_tool_calls),
-        )
-        return AgentResult(question=question, answer=answer, trajectory=trajectory)
+            async with agent.session() as session:
+                finish_params, history, _metadata = await session.run(question)
+
+            trajectory = build_trajectory(history)
+            trajectory.started_at = started_at
+            answer = final_answer(history, finish_params)
+            trajectory_log.write_completed(
+                model=self._model_id,
+                question=question,
+                answer=answer,
+                trajectory=trajectory,
+            )
+            _log.info(
+                "StirrupAgentRunner: done (turns=%d, tool_calls=%d)",
+                len(trajectory.turns),
+                len(trajectory.all_tool_calls),
+            )
+            return AgentResult(question=question, answer=answer, trajectory=trajectory)
+        except BaseException as exc:
+            trajectory_log.write_failed(
+                model=self._model_id,
+                question=question,
+                error=exc,
+            )
+            raise
+
+    @property
+    def trajectory_log_path(self) -> Path | None:
+        """Path used by the most recent run, or ``None`` when logging is disabled."""
+        return self._trajectory_log_path

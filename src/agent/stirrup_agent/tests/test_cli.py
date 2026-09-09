@@ -21,6 +21,15 @@ def test_cli_accepts_reference_date() -> None:
     assert args.reference_date == "2020-06-20"
 
 
+def test_cli_accepts_trajectory_log_options(tmp_path) -> None:
+    args = _build_parser().parse_args(
+        ["Analyze the asset.", "--no-log", "--log-dir", str(tmp_path)]
+    )
+
+    assert args.no_log is True
+    assert args.log_dir == tmp_path
+
+
 def test_cli_server_overrides_are_parsed() -> None:
     assert _parse_servers(
         ["iot=iot-mcp-server", "custom=python -m servers.custom.main"]

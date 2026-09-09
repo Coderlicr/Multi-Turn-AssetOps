@@ -8,6 +8,7 @@ they run without Stirrup, the MCP servers, Docker, or a model.
 from __future__ import annotations
 
 import datetime as _dt
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -394,6 +395,7 @@ def test_arguments_parsed_when_already_dict():
 @pytest.mark.anyio
 async def test_run_returns_legacy_final_answer(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ):
     client = object()
     history = [
@@ -432,13 +434,27 @@ async def test_run_returns_legacy_final_answer(
 
     monkeypatch.setattr("stirrup.Agent", _FakeAgent)
 
-    runner = StirrupAgentRunner(server_paths={}, code_enabled=False)
+    runner = StirrupAgentRunner(
+        server_paths={},
+        code_enabled=False,
+        log_dir=tmp_path,
+    )
     monkeypatch.setattr(runner, "_build_client", lambda: client)
     monkeypatch.setattr(runner, "_build_tools", lambda: [])
 
     result = await runner.run("Return a JSON object.")
 
     assert result.answer == 'The requested result is {"count":7}.'
+    assert runner.trajectory_log_path is not None
+    records = [
+        json.loads(line)
+        for line in runner.trajectory_log_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["event"] for record in records] == [
+        "run_started",
+        "run_completed",
+    ]
+    assert records[1]["trajectory"]["turns"][0]["tool_calls"][0]["name"] == "code_exec"
 
 
 @pytest.mark.anyio
