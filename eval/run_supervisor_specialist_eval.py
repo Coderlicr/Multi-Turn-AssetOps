@@ -84,6 +84,7 @@ async def run_dialog(
     log_dir: pathlib.Path,
     model_id: Optional[str],
     reuse_mode: str = "full",
+    max_repeat_dispatch: int = 0,
     per_turn_timeout: int = PER_TURN_TIMEOUT,
 ) -> pathlib.Path | None:
     dialog_id = scenario["id"]
@@ -104,6 +105,7 @@ async def run_dialog(
     if model_id:
         cmd.extend(["--model-id", model_id])
     cmd.extend(["--reuse-mode", reuse_mode])
+    cmd.extend(["--max-repeat-dispatch", str(max_repeat_dispatch)])
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -151,6 +153,7 @@ async def run_all(
     dialog_ids: Optional[list[int]],
     model_id: Optional[str],
     reuse_mode: str = "full",
+    max_repeat_dispatch: int = 0,
     per_turn_timeout: int = PER_TURN_TIMEOUT,
     per_dialog_timeout: int = PER_DIALOG_TIMEOUT,
 ) -> None:
@@ -170,7 +173,10 @@ async def run_all(
     for scenario in scenarios:
         try:
             await asyncio.wait_for(
-                run_dialog(scenario, log_dir, model_id, reuse_mode, per_turn_timeout),
+                run_dialog(scenario, log_dir, model_id,
+                           reuse_mode=reuse_mode,
+                           max_repeat_dispatch=max_repeat_dispatch,
+                           per_turn_timeout=per_turn_timeout),
                 timeout=per_dialog_timeout,
             )
         except Exception as exc:  # noqa: BLE001
@@ -195,6 +201,11 @@ def main() -> None:
                         help="Behavior log directory (default: logs/supervisor_specialist_eval/<timestamp>).")
     parser.add_argument("--reuse-mode", choices=["full", "none", "stateless"], default="full",
                         help="Cross-turn evidence reuse policy (default: full).")
+    parser.add_argument("--max-repeat-dispatch", type=int, default=0,
+                        help="Reject a specialist dispatched this many times in a row "
+                             "within one turn (0 = off). Guards against the supervisor "
+                             "looping on one specialist; every arm of a comparison must "
+                             "use the same value.")
     parser.add_argument("--per-turn-timeout", type=int, default=PER_TURN_TIMEOUT,
                         help="Seconds allowed per turn (default: %(default)s). Raise this for "
                              "reuse ablations: without reuse every turn redoes the expensive "
@@ -213,6 +224,7 @@ def main() -> None:
     )
 
     asyncio.run(run_all(SCENARIOS, log_dir, args.dialogs, args.model_id, args.reuse_mode,
+                        args.max_repeat_dispatch,
                         args.per_turn_timeout, args.per_dialog_timeout))
 
 

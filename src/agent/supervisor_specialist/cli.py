@@ -83,6 +83,18 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "--max-repeat-dispatch",
+        type=int,
+        default=int(os.environ.get("SS_MAX_REPEAT_DISPATCH", "0")),
+        help=(
+            "Reject a specialist already dispatched this many times in a row within "
+            "one turn (0 = disabled, the default). The prompt-level 'do not repeat' "
+            "rule is advisory: a model can reword task_type and loop indefinitely. "
+            "Turning this on changes system behaviour, so every arm of a comparison "
+            "must use the same setting."
+        ),
+    )
+    p.add_argument(
         "--no-artifact-reuse",
         dest="reuse_mode",
         action="store_const",
@@ -112,6 +124,7 @@ async def _run(args: argparse.Namespace) -> None:
         log_dir=log_dir,
         reference_date=args.reference_date,
         reuse_mode=args.reuse_mode,
+        max_repeat_dispatch=args.max_repeat_dispatch,
     )
     if args.reuse_mode != REUSE_FULL and not args.no_stream:
         print(f"[ablation] cross-turn evidence reuse: {args.reuse_mode}", file=sys.stderr)

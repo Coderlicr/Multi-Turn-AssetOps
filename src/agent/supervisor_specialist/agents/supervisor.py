@@ -141,12 +141,19 @@ class SupervisorAgent:
         event_stream: EventStream,
         behavior_log: BehaviorLog,
         reference_date: datetime | None = None,
+        max_repeat_dispatch: int = 0,
     ) -> None:
         self.llm = llm
         self.artifact_store = artifact_store
         self.event_stream = event_stream
         self.behavior_log = behavior_log
         self._reference_date = reference_date
+        # 0 disables the guard. The prompt already says not to call the same
+        # specialist twice for the same purpose, but that is advisory only: a
+        # model can reword task_type each time and loop indefinitely, burning
+        # the step budget and inflating tool-call and latency metrics.
+        self._max_repeat_dispatch = max_repeat_dispatch
+        self._dispatch_history: dict[str, list[str]] = {}
 
     async def decide(self, state: GraphState) -> GraphState:
         case_state: CaseState = state["case_state"]
@@ -209,8 +216,9 @@ class SupervisorAgent:
             case_id=case_state.case_id,
         )
 
+        turn_key = f"{case_state.case_id}:{_turn_id(state)}"
         decision, validation_error = await self._call_and_validate(
-            prompt, case_state, max_steps
+            prompt, case_state, max_steps, turn_key
         )
 
         if decision is None:
@@ -234,6 +242,9 @@ class SupervisorAgent:
                 "step_count": step_count,
                 "error_message": validation_error or "Supervisor LLM failed to produce a valid decision.",
             }
+
+        if decision.next_node != "respond_to_user":
+            self._dispatch_history.setdefault(turn_key, []).append(decision.next_node)
 
         # Apply decision to case state
         case_state = self._apply_decision(case_state, decision)
@@ -271,6 +282,7 @@ class SupervisorAgent:
         prompt: str,
         case_state: CaseState,
         max_steps: int,
+        turn_key: str = "",
     ) -> tuple[SupervisorDecision | None, str | None]:
         retry_prompt = prompt
         last_error: str | None = None
@@ -292,7 +304,7 @@ class SupervisorAgent:
                 continue
 
             # Business rule validation (§13.1)
-            error = self._validate_decision(decision, case_state)
+            error = self._validate_decision(decision, case_state, turn_key)
             if error:
                 last_error = error
                 retry_prompt = (
@@ -307,10 +319,14 @@ class SupervisorAgent:
         return None, last_error
 
     def _validate_decision(
-        self, decision: SupervisorDecision, case_state: CaseState
+        self, decision: SupervisorDecision, case_state: CaseState, turn_key: str = ""
     ) -> str | None:
         if decision.next_node not in _VALID_NEXT_NODES:
             return f"Invalid next_node: {decision.next_node}"
+
+        repeat_error = self._check_repeat_dispatch(decision, turn_key)
+        if repeat_error:
+            return repeat_error
 
         if decision.case_status not in _VALID_STATUSES:
             return f"Invalid case_status: {decision.case_status}"
@@ -360,6 +376,35 @@ class SupervisorAgent:
             )
 
         return None
+
+    def _check_repeat_dispatch(
+        self, decision: SupervisorDecision, turn_key: str
+    ) -> str | None:
+        """Reject a specialist that has already been dispatched N times this turn.
+
+        Guards against the supervisor looping on one specialist by rewording
+        task_type, which the prompt-level rule cannot catch. Rejection sends the
+        decision back for a retry; if the retry loops too, the caller falls
+        through to respond_to_user, which is the desired escape.
+        """
+        limit = self._max_repeat_dispatch
+        if limit <= 0 or not turn_key or decision.next_node == "respond_to_user":
+            return None
+
+        history = self._dispatch_history.get(turn_key, [])
+        consecutive = 0
+        for role in reversed(history):
+            if role != decision.next_node:
+                break
+            consecutive += 1
+        if consecutive < limit:
+            return None
+        return (
+            f"{decision.next_node} has already been dispatched {consecutive} times "
+            f"in a row during this turn, which indicates a loop. Either choose a "
+            f"different specialist, or set next_node to 'respond_to_user' and answer "
+            f"with the evidence already collected."
+        )
 
     def _apply_decision(
         self, case_state: CaseState, decision: SupervisorDecision

@@ -89,6 +89,7 @@ class SupervisorSpecialistRunner:
         reference_date: str | None = None,
         mcp_tools: MCPToolClient | None = None,
         reuse_mode: str = REUSE_FULL,
+        max_repeat_dispatch: int = 0,
     ) -> None:
         if reuse_mode not in REUSE_MODES:
             raise ValueError(
@@ -116,6 +117,7 @@ class SupervisorSpecialistRunner:
             event_stream=event_stream,
             behavior_log=behavior_log,
             reference_date=self._ref,
+            max_repeat_dispatch=max_repeat_dispatch,
         )
 
         def _make_specialist(cls):

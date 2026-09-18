@@ -106,6 +106,7 @@ def _wandb_init(
     system: str,
     dialog_ids: Optional[list[int]],
     reuse_mode: str = "full",
+    max_repeat_dispatch: int = 0,
 ) -> Optional[object]:
     """Initialize a WandB run if wandb is installed and WANDB_API_KEY is set."""
     if not os.environ.get("WANDB_API_KEY"):
@@ -457,6 +458,7 @@ async def run_dialog(
     model_id: Optional[str],
     verbose: bool,
     reuse_mode: str = "full",
+    max_repeat_dispatch: int = 0,
     per_turn_timeout: int = PER_TURN_TIMEOUT,
 ) -> tuple[dict, dict]:
     """Run one dialog. Returns (result_record, llm_metrics)."""
@@ -490,6 +492,7 @@ async def run_dialog(
         cmd.extend(["--model-id", model_id])
     # Ablation arm: same binary, same metrics collection, different reuse policy.
     cmd.extend(["--reuse-mode", reuse_mode])
+    cmd.extend(["--max-repeat-dispatch", str(max_repeat_dispatch)])
 
     stderr_path = output_dir / f"dialog_{dialog_id:02d}_stderr.txt"
     metrics_path = output_dir / f"dialog_{dialog_id:02d}_llm_metrics.jsonl"
@@ -661,8 +664,10 @@ async def run_all(
     for scenario in scenarios:
         try:
             result, llm_metrics = await asyncio.wait_for(
-                run_dialog(scenario, output_dir, model_id, verbose, reuse_mode,
-                           per_turn_timeout),
+                run_dialog(scenario, output_dir, model_id, verbose,
+                           reuse_mode=reuse_mode,
+                           max_repeat_dispatch=max_repeat_dispatch,
+                           per_turn_timeout=per_turn_timeout),
                 timeout=per_dialog_timeout,
             )
         except asyncio.TimeoutError:
@@ -791,6 +796,11 @@ def main() -> None:
                         default="full",
                         help="Cross-turn evidence reuse policy for the ablation "
                              "(default: full = the full system).")
+    parser.add_argument("--max-repeat-dispatch", type=int, default=0,
+                        help="Reject a specialist dispatched this many times in a row "
+                             "within one turn (0 = off). Guards against the supervisor "
+                             "looping on one specialist; every arm of a comparison must "
+                             "use the same value.")
     parser.add_argument("--per-turn-timeout", type=int, default=PER_TURN_TIMEOUT,
                         help="Seconds allowed per turn (default: %(default)s). Raise this for "
                              "reuse ablations: without reuse every turn redoes the expensive "
@@ -809,6 +819,7 @@ def main() -> None:
 
     asyncio.run(run_all(SCENARIOS, out_dir, args.model_id, args.dialogs,
                         args.system, args.verbose, args.reuse_mode,
+                        args.max_repeat_dispatch,
                         args.per_turn_timeout, args.per_dialog_timeout))
 
 

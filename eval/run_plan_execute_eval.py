@@ -83,6 +83,7 @@ async def run_dialog(
     scenario: dict,
     log_dir: pathlib.Path,
     model_id: Optional[str],
+    per_turn_timeout: int = PER_TURN_TIMEOUT,
 ) -> pathlib.Path | None:
     dialog_id = scenario["id"]
     turns = scenario["turns"]
@@ -118,7 +119,7 @@ async def run_dialog(
                 await proc.stdin.drain()
 
             assert proc.stdout is not None
-            await _read_until_prompt(proc.stdout, timeout=PER_TURN_TIMEOUT)
+            await _read_until_prompt(proc.stdout, timeout=per_turn_timeout)
             print(f"  turn {i + 1}/{len(turns)} done")
 
         if proc.returncode is None:
@@ -146,6 +147,8 @@ async def run_all(
     log_dir: pathlib.Path,
     dialog_ids: Optional[list[int]],
     model_id: Optional[str],
+    per_turn_timeout: int = PER_TURN_TIMEOUT,
+    per_dialog_timeout: int = PER_DIALOG_TIMEOUT,
 ) -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -156,16 +159,19 @@ async def run_all(
         return
 
     print(f"Behavior log dir: {log_dir}")
+    print(f"Timeouts: {per_turn_timeout}s/turn, {per_dialog_timeout}s/dialog")
     print(f"Dialogs: {[s['id'] for s in scenarios]}")
 
     for scenario in scenarios:
         try:
             await asyncio.wait_for(
-                run_dialog(scenario, log_dir, model_id),
-                timeout=PER_DIALOG_TIMEOUT,
+                run_dialog(scenario, log_dir, model_id, per_turn_timeout),
+                timeout=per_dialog_timeout,
             )
         except Exception as exc:  # noqa: BLE001
-            print(f"Dialog {scenario['id']:02d} failed: {exc}")
+            # asyncio.TimeoutError stringifies to "", which hides the cause.
+            detail = str(exc) or f"{type(exc).__name__} (no message)"
+            print(f"Dialog {scenario['id']:02d} failed: {detail}")
 
 
 def main() -> None:
@@ -182,6 +188,12 @@ def main() -> None:
                         help="Override LiteLLM model ID.")
     parser.add_argument("--log-dir", default=None,
                         help="Behavior log directory (default: logs/plan_execute_eval/<timestamp>).")
+    parser.add_argument("--per-turn-timeout", type=int, default=PER_TURN_TIMEOUT,
+                        help="Seconds allowed per turn (default: %(default)s). Plan-execute "
+                             "replans from scratch every turn, so it needs the same raised "
+                             "budget as the reuse ablation; truncation would bias the baseline.")
+    parser.add_argument("--per-dialog-timeout", type=int, default=PER_DIALOG_TIMEOUT,
+                        help="Seconds allowed per dialog (default: %(default)s).")
     args = parser.parse_args()
 
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -193,7 +205,8 @@ def main() -> None:
         else DEFAULT_LOG_ROOT / datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
     )
 
-    asyncio.run(run_all(SCENARIOS, log_dir, args.dialogs, args.model_id))
+    asyncio.run(run_all(SCENARIOS, log_dir, args.dialogs, args.model_id,
+                        args.per_turn_timeout, args.per_dialog_timeout))
 
 
 if __name__ == "__main__":
