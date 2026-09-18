@@ -162,6 +162,12 @@ def normalize_equipment_id(equipment_id: str) -> str:
     return _ASSET_NAME_TO_EQUIPMENT_ID.get(equipment_id.strip().lower(), equipment_id)
 
 
+def display_equipment_id(equipment_id: str) -> str:
+    """Translate an internal equipment ID back to the human-readable asset name."""
+    reverse = {v.lower(): k.title() for k, v in _ASSET_NAME_TO_EQUIPMENT_ID.items()}
+    return reverse.get(equipment_id.strip().lower(), equipment_id)
+
+
 def parse_date(value: Optional[str]) -> Optional[datetime]:
     """Parse a date string; accepts YYYY-MM-DD or ISO 8601 datetime (time part ignored)."""
     if not value:
@@ -204,6 +210,7 @@ def get_transition_matrix(event_df: pd.DataFrame, event_type_col: str) -> pd.Dat
 
 
 def row_to_wo(row: Any) -> WorkOrderItem:
+    equipment_name = str(row.get("equipment_name", "")) or display_equipment_id(str(row.get("equipment_id", "")))
     return WorkOrderItem(
         wo_id=str(row.get("wo_id", "")),
         wo_description=str(row.get("wo_description", "")),
@@ -212,8 +219,8 @@ def row_to_wo(row: Any) -> WorkOrderItem:
         primary_code_description=str(row.get("primary_code_description", "")),
         secondary_code=str(row.get("secondary_code", "")),
         secondary_code_description=str(row.get("secondary_code_description", "")),
-        equipment_id=str(row.get("equipment_id", "")),
-        equipment_name=str(row.get("equipment_name", "")),
+        equipment_id=equipment_name,
+        equipment_name=equipment_name,
         preventive=str(row.get("preventive", "")).upper() == "TRUE",
         work_priority=int(row["work_priority"]) if pd.notna(row.get("work_priority")) else None,
         actual_finish=row["actual_finish"].isoformat() if pd.notna(row.get("actual_finish")) else None,
@@ -223,14 +230,15 @@ def row_to_wo(row: Any) -> WorkOrderItem:
 
 
 def row_to_event(row: Any) -> EventItem:
+    equipment_name = str(row.get("equipment_name", "")) or display_equipment_id(str(row.get("equipment_id", "")))
     return EventItem(
         event_id=str(row.get("event_id", "")),
         event_group=str(row.get("event_group", "")),
         event_category=str(row.get("event_category", "")),
         event_type=str(row["event_type"]) if pd.notna(row.get("event_type")) else None,
         description=str(row["description"]) if pd.notna(row.get("description")) else None,
-        equipment_id=str(row.get("equipment_id", "")),
-        equipment_name=str(row.get("equipment_name", "")),
+        equipment_id=equipment_name,
+        equipment_name=equipment_name,
         event_time=row["event_time"].isoformat() if pd.notna(row.get("event_time")) else "",
         note=str(row["note"]) if pd.notna(row.get("note")) else None,
     )

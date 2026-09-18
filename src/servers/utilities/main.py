@@ -1,6 +1,5 @@
 import json
 import logging
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, List, Optional
@@ -37,12 +36,9 @@ class TimeEnglishResult(BaseModel):
 
 
 def get_temp_filename() -> str:
-    tmpdir = tempfile.gettempdir()
-    tmppath = Path(tmpdir)
-    basepath = Path("cbmdir")
     filename = str(uuid4())
 
-    tmpdir_path = tmppath / basepath
+    tmpdir_path = Path("/tmp/assetops/cbmdir")
     tmpdir_path.mkdir(parents=True, exist_ok=True)
 
     filepath = tmpdir_path / (filename + ".json")

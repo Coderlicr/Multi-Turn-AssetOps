@@ -14,8 +14,17 @@ from agent.supervisor_specialist.agents.failure_reasoning import FailureReasonin
 from agent.supervisor_specialist.agents.maintenance_planning import MaintenancePlanningSpecialist
 from agent.supervisor_specialist.agents.supervisor import SupervisorAgent
 from agent.supervisor_specialist.agents.time_series_analysis import TimeSeriesAnalysisSpecialist
-from agent.supervisor_specialist.graph import Dependencies, build_graph
-from agent.supervisor_specialist.runtime.artifact_store import ArtifactStore
+from agent.supervisor_specialist.graph import (
+    REUSE_FULL,
+    REUSE_MODES,
+    Dependencies,
+    build_graph,
+)
+from agent.supervisor_specialist.runtime.artifact_store import (
+    SCOPE_CASE,
+    SCOPE_TURN,
+    ArtifactStore,
+)
 from agent.supervisor_specialist.runtime.behavior_log import BehaviorLog
 from agent.supervisor_specialist.runtime.event_stream import EventStream
 from agent.supervisor_specialist.runtime.mcp_tools import DEFAULT_SERVER_PATHS, MCPToolClient
@@ -80,8 +89,15 @@ class SupervisorSpecialistRunner:
         reference_date: str | None = None,
         mcp_tools: MCPToolClient | None = None,
         parallel: bool = False,
+        reuse_mode: str = REUSE_FULL,
+        max_repeat_dispatch: int = 0,
     ) -> None:
+        if reuse_mode not in REUSE_MODES:
+            raise ValueError(
+                f"Unknown reuse_mode {reuse_mode!r}; expected one of {list(REUSE_MODES)}"
+            )
         self._llm = llm
+        self._reuse_mode = reuse_mode
         self._max_steps = max_steps
         self._parallel = parallel
         self._ref = _resolve_reference_date(reference_date)
@@ -89,9 +105,11 @@ class SupervisorSpecialistRunner:
         self._dialog_started = False
         self._last_dialog_state: GraphState | None = None
 
-        artifact_store = ArtifactStore()
+        artifact_store = ArtifactStore(
+            scope=SCOPE_CASE if reuse_mode == REUSE_FULL else SCOPE_TURN
+        )
         event_stream = EventStream(quiet=quiet)
-        behavior_log = BehaviorLog(log_dir=log_dir)
+        behavior_log = BehaviorLog(log_dir=log_dir, reuse_mode=reuse_mode)
         self._behavior_log = behavior_log
         mcp_tools = mcp_tools or MCPToolClient(server_paths=server_paths or DEFAULT_SERVER_PATHS)
 
@@ -101,6 +119,7 @@ class SupervisorSpecialistRunner:
             event_stream=event_stream,
             behavior_log=behavior_log,
             reference_date=self._ref,
+            max_repeat_dispatch=max_repeat_dispatch,
         )
 
         def _make_specialist(cls):
@@ -123,6 +142,7 @@ class SupervisorSpecialistRunner:
             event_stream=event_stream,
             behavior_log=behavior_log,
             llm=llm,
+            reuse_mode=reuse_mode,
         )
 
         serde = JsonPlusSerializer(allowed_msgpack_modules=_CHECKPOINT_TYPES)
@@ -168,11 +188,16 @@ class SupervisorSpecialistRunner:
             output_artifact_ids=[],
             status="ok",
             user_message=question,
+            turn_id=f"turn_{(self._last_dialog_state['turn_index'] if self._dialog_started else 0) + 1:03d}",
         )
         result = await self._graph.ainvoke(input_state, config=config)
         self._dialog_started = True
         self._last_dialog_state = result
         return result.get("final_response") or "(no response generated)"
+
+    @property
+    def reuse_mode(self) -> str:
+        return self._reuse_mode
 
     @property
     def last_dialog_state(self) -> GraphState | None:

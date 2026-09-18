@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from agent.supervisor_specialist.agents.base import (
     SpecialistAgent,
     _parse_tool_json,
@@ -23,7 +25,11 @@ class DataCollectionSpecialist(SpecialistAgent):
         "- If iot.assets returns multiple assets and the goal does not name a specific asset, "
         "collect data for ALL returned assets before marking done — do not stop after the first one\n"
         "- After calling iot.history_csv for an asset, always call utilities.csv_stats on the "
-        "returned csv_path to obtain column statistics before moving to the next asset"
+        "returned csv_path to obtain column statistics before moving to the next asset\n"
+        "- For real-time incident or trip reports, first call iot.sensors for the asset, "
+        "then retrieve recent iot.history or iot.history_csv for the requested/recent window; "
+        "note any failed or unavailable sensor retrievals so downstream analysis can use "
+        "the remaining available signals"
     )
     allowed_tools = {
         "iot.sites",
@@ -93,6 +99,9 @@ class DataCollectionSpecialist(SpecialistAgent):
         artifacts: list[ArtifactEnvelope],
     ) -> list[ArtifactEnvelope]:
         del input_artifacts
+        self._normalize_dataset_artifacts(task, artifacts, results)
+        if not self.enable_parallel:
+            return artifacts
         datasets_by_asset = self._datasets_by_asset(results)
         if not datasets_by_asset:
             return artifacts
@@ -181,3 +190,38 @@ class DataCollectionSpecialist(SpecialistAgent):
                 "total_observations": parsed.get("total_observations"),
             }
         return datasets
+
+    def _normalize_dataset_artifacts(self, task, artifacts, results) -> None:
+        del task
+        csv_paths: list[str] = []
+        for result in results:
+            if result.status != "ok":
+                continue
+            parsed = self._parse_tool_result(result.result)
+            if not isinstance(parsed, dict):
+                continue
+            csv_path = parsed.get("csv_path")
+            if isinstance(csv_path, str) and csv_path not in csv_paths:
+                csv_paths.append(csv_path)
+
+        if not csv_paths:
+            return
+
+        for artifact in artifacts:
+            if artifact.artifact_type != "dataset_ref":
+                continue
+            artifact.payload.setdefault("csv_path", csv_paths[0])
+            if len(csv_paths) > 1:
+                artifact.payload.setdefault("csv_paths", csv_paths)
+
+    @staticmethod
+    def _parse_tool_result(value):
+        if isinstance(value, dict):
+            return value
+        if not isinstance(value, str):
+            return None
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            return None

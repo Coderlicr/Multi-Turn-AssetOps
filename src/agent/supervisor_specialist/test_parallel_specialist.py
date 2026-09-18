@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from pathlib import Path
+import sys
 
 import pytest
 
@@ -18,7 +20,119 @@ from agent.supervisor_specialist.schemas import (
     TaskEnvelope,
     TimeWindow,
     ToolCallRequest,
+    ToolCallResult,
 )
+
+
+_CSV_ROOT = Path('/tmp')
+
+
+def _csv_path(asset):
+    return str(_CSV_ROOT / f'chiller_{asset}.csv')
+
+
+@pytest.fixture(autouse=True)
+def existing_csv_inputs(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], '_CSV_ROOT', tmp_path)
+    for asset in (3, 4, 6, 9):
+        (tmp_path / f'chiller_{asset}.csv').write_text('timestamp,supply_temp\n2020-06-01,50\n')
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("parallel", [False, True])
+async def test_finetuning_guard_and_result_normalization_with_parallel(tmp_path, parallel):
+    class FinetuningLLM:
+        steps = 0
+
+        def generate(self, prompt, temperature=0.0):
+            if "Decide the NEXT action." in prompt:
+                self.steps += 1
+                if self.steps == 2:
+                    assert "Fine-tuning task is not complete" in prompt
+                    return json.dumps({"tool_name": "tsfm.run_tsfm_finetuning", "args": {"dataset_path": _csv_path(6)}})
+                return json.dumps({"done": True})
+            return json.dumps({"artifacts": [{"artifact_type": "analysis_result", "asset_ids": ["Chiller 6"], "payload": {}}]})
+
+    class FinetuningMCP(BatchMCPToolClient):
+        async def call(self, tool_name, args):
+            self.calls.append((tool_name, args))
+            payload = {"model_checkpoint": "/tmp/trained_checkpoint", "results_file": "/tmp/metrics.csv"} if tool_name == "tsfm.run_tsfm_finetuning" else {"all_columns": []}
+            return MCPToolResult(status="ok", result=json.dumps(payload))
+
+    store = ArtifactStore()
+    store.save_many([ArtifactEnvelope(
+        artifact_id="artifact_dc_001", case_id="case_finetune", producer="data_collection_specialist",
+        artifact_type="dataset_ref", asset_ids=["Chiller 6"], time_window=TimeWindow(),
+        source_tools=[], source_artifacts=[], payload={"csv_path": _csv_path(6)},
+    )])
+    mcp = FinetuningMCP()
+    specialist = TimeSeriesAnalysisSpecialist(
+        llm=FinetuningLLM(), mcp_tools=mcp, artifact_store=store,
+        behavior_log=BehaviorLog(log_dir=tmp_path), event_stream=EventStream(quiet=True),
+        enable_parallel=parallel,
+    )
+    task = TaskEnvelope(
+        case_id="case_finetune", task_type="fine_tuning", goal="Fine-tune the model",
+        site="MAIN", asset_ids=["Chiller 6"], time_window=TimeWindow(),
+        focus_metrics=[], input_artifacts=["artifact_dc_001"],
+    )
+    result = await specialist.run(task)
+    assert result.tool_calls[0].tool_name == "internal.done_guard"
+    assert result.tool_calls[1].status == "ok"
+    assert result.artifacts[0].payload == {
+        "task_completed": True, "operation": "fine_tuning",
+        "checkpoint_path": "/tmp/trained_checkpoint", "model_checkpoint": "/tmp/trained_checkpoint",
+        "metrics_file": "/tmp/metrics.csv", "results_file": "/tmp/metrics.csv",
+    }
+
+
+@pytest.mark.anyio
+async def test_parallel_batch_validates_each_file_argument(tmp_path):
+    class InvalidBatchLLM(BatchLLM):
+        def generate(self, prompt, temperature=0.0):
+            response = json.loads(super().generate(prompt, temperature))
+            if "tool_calls" in response:
+                response["tool_calls"][1]["args"]["dataset_path"] = "artifact_dc_001"
+            return json.dumps(response)
+
+    mcp = BatchMCPToolClient(delay=0)
+    specialist = TimeSeriesAnalysisSpecialist(
+        llm=InvalidBatchLLM(), mcp_tools=mcp, artifact_store=ArtifactStore(),
+        behavior_log=BehaviorLog(log_dir=tmp_path), event_stream=EventStream(quiet=True),
+        enable_parallel=True,
+    )
+    task = TaskEnvelope(
+        case_id="case_guard", task_type="anomaly_detection", goal="Analyze CSVs",
+        site="MAIN", asset_ids=[], time_window=TimeWindow(), focus_metrics=[], input_artifacts=[],
+    )
+    result = await specialist.run(task)
+    assert len(mcp.calls) == 3
+    assert result.tool_calls[1].status == "failed"
+    assert "artifact ID" in result.tool_calls[1].error
+    assert [r.parallel_index for r in result.tool_calls] == [1, 2, 3, 4]
+
+
+@pytest.mark.parametrize("parallel", [False, True])
+def test_dataset_paths_normalized_in_both_execution_modes(tmp_path, parallel):
+    specialist = DataCollectionSpecialist(
+        llm=DoneLLM(), mcp_tools=CoverageMCPToolClient(), artifact_store=ArtifactStore(),
+        behavior_log=BehaviorLog(log_dir=tmp_path), event_stream=EventStream(quiet=True),
+        enable_parallel=parallel,
+    )
+    task = TaskEnvelope(
+        case_id="case_dataset", task_type="collect", goal="Collect data", site="MAIN",
+        asset_ids=["Chiller 6"], time_window=TimeWindow(), focus_metrics=[], input_artifacts=[],
+    )
+    artifact = ArtifactEnvelope(
+        artifact_id="artifact_dc_001", case_id=task.case_id, producer=specialist.role,
+        artifact_type="dataset_ref", asset_ids=task.asset_ids, time_window=TimeWindow(),
+        source_tools=[], source_artifacts=[], payload={},
+    )
+    results = [ToolCallResult(order=1, tool_name="iot.history_csv", args={"asset_id": "Chiller 6"}, status="ok", result=json.dumps({"csv_path": _csv_path(6)}))]
+    normalized = specialist._postprocess_artifacts(task, [], results, [artifact])
+    assert normalized[0].payload["csv_path"] == _csv_path(6)
+    if parallel:
+        assert normalized[0].payload["datasets_by_asset"]["Chiller 6"]["csv_path"] == _csv_path(6)
 
 
 class ParallelMCPToolClient(MCPToolClient):
@@ -59,7 +173,7 @@ class BatchLLM:
                         {
                             "tool_name": "tsfm.run_integrated_tsad",
                             "args": {
-                                "dataset_path": f"/tmp/chiller_{asset}.csv",
+                                "dataset_path": _csv_path(asset),
                                 "target_columns": ["supply_temp"],
                             },
                         }
@@ -113,7 +227,7 @@ class DuplicateRetryLLM:
                         {
                             "tool_name": "tsfm.run_integrated_tsad",
                             "args": {
-                                "dataset_path": f"/tmp/chiller_{asset}.csv",
+                                "dataset_path": _csv_path(asset),
                                 "target_columns": ["supply_temp"],
                             },
                         }
@@ -236,7 +350,7 @@ class BatchMCPToolClient:
         self.max_active = max(self.max_active, self.active)
         try:
             await asyncio.sleep(self.delay)
-            if args.get("dataset_path") == "/tmp/chiller_4.csv":
+            if args.get("dataset_path") == _csv_path(4):
                 return MCPToolResult(status="failed", error="synthetic TSFM failure")
             return MCPToolResult(
                 status="ok",
@@ -387,10 +501,10 @@ async def test_specialist_executes_parallel_batch_and_logs_metadata(tmp_path, mo
     assert mcp_tools.max_active == 4
     assert elapsed < 0.30
     assert [call[1]["dataset_path"] for call in mcp_tools.calls] == [
-        "/tmp/chiller_3.csv",
-        "/tmp/chiller_4.csv",
-        "/tmp/chiller_6.csv",
-        "/tmp/chiller_9.csv",
+        _csv_path(3),
+        _csv_path(4),
+        _csv_path(6),
+        _csv_path(9),
     ]
     assert len(result.tool_calls) == 4
     group_ids = {call.parallel_group_id for call in result.tool_calls}
@@ -436,7 +550,7 @@ async def test_parallel_disabled_runs_only_one_tool_call_from_batch(tmp_path):
 
     result = await specialist.run(task)
 
-    assert [call[1]["dataset_path"] for call in mcp_tools.calls] == ["/tmp/chiller_3.csv"]
+    assert [call[1]["dataset_path"] for call in mcp_tools.calls] == [_csv_path(3)]
     assert len(result.tool_calls) == 1
     assert result.tool_calls[0].parallel_group_id is None
 
@@ -469,10 +583,10 @@ async def test_duplicate_successful_batch_members_are_skipped_not_logged_as_fail
 
     assert llm.react_count == 2
     assert [call[1]["dataset_path"] for call in mcp_tools.calls] == [
-        "/tmp/chiller_3.csv",
-        "/tmp/chiller_4.csv",
-        "/tmp/chiller_6.csv",
-        "/tmp/chiller_9.csv",
+        _csv_path(3),
+        _csv_path(4),
+        _csv_path(6),
+        _csv_path(9),
     ]
     assert len(result.tool_calls) == 4
     assert [call.status for call in result.tool_calls] == ["ok", "failed", "ok", "ok"]

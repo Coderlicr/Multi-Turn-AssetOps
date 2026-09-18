@@ -116,6 +116,22 @@ source .venv/bin/activate
 
 The project uses `uv` and requires Python 3.12+. Optional TSFM dependencies include PyTorch, Transformers, and `granite-tsfm`.
 
+Stirrup can use the same MCP servers through TokenRouter. Its default server
+set is `iot`, `utilities`, `fmsr`, `tsfm`, and `wo` (`vibration` is excluded):
+
+```bash
+uv run stirrup-agent --no-code \
+  --reference-date 2020-06-20 \
+  --model-id tokenrouter/<model-name> \
+  "List the assets available at site MAIN."
+```
+
+The Stirrup code-execution track is enabled by default. See
+[`INSTRUCTIONS.md`](INSTRUCTIONS.md#stirrup-agent) for Docker/local backend and
+workspace-preservation options.
+
+`docker compose` initializes the IoT CouchDB database from `src/couchdb/sample_data/iot/main.json`, filtered to `Chiller 3`, `Chiller 4`, `Chiller 6`, and `Chiller 9`.
+
 Create a `.env` file from `.env.example` and fill the WatsonX credentials:
 
 ```bash
@@ -135,7 +151,7 @@ WATSONX_APIKEY=<your key>
 WATSONX_PROJECT_ID=<your project id>
 WATSONX_URL=https://us-south.ml.cloud.ibm.com
 
-SS_MODEL_ID=watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
+DEFAULT_MODEL_ID=watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
 SS_MAX_STEPS=12
 SUPERVISOR_SPECIALIST_PARALLELISM=4
 ```
@@ -263,6 +279,19 @@ Representative per-server tool latency:
 ---
 
 ## 7. Implementation Notes
+
+### Stirrup Runner — `src/agent/stirrup_agent/`
+
+- `cli.py` — entry point for the `stirrup-agent` command
+- `runner.py` — TokenRouter-aware Stirrup runner and five-server MCP defaults
+- `workspace_bridge.py` — makes file-producing MCP results available to code execution
+
+### LLM Backends — `src/llm/`
+
+- `litellm.py` — LiteLLM / WatsonX backend implementation
+- `routers.py` — LiteLLM Proxy / TokenRouter prefix and credential resolution
+- `base.py` — abstract `LLMBackend` interface
+
 
 - MCP servers live in `src/servers/` and expose IoT, work-order, time-series, failure-mode, utility, and vibration tools.
 - The Plan-Execute baseline is implemented under `src/agent/plan_execute/`.

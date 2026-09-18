@@ -155,15 +155,16 @@ _MAX_RETRIES = 3
 def _build_llm():
     from llm import LiteLLMBackend
 
-    model_id = os.environ.get("FMSR_MODEL_ID", _DEFAULT_MODEL_ID)
+    model_id = os.environ.get("DEFAULT_MODEL_ID", _DEFAULT_MODEL_ID)
     if model_id.startswith("watsonx/"):
-        missing = [v for v in ("WATSONX_APIKEY", "WATSONX_PROJECT_ID") if not os.environ.get(v)]
-        if missing:
-            raise RuntimeError(f"Missing env vars for WatsonX: {missing}")
+        required, label = ("WATSONX_APIKEY", "WATSONX_PROJECT_ID"), "WatsonX"
+    elif model_id.startswith("tokenrouter/"):
+        required, label = ("TOKENROUTER_API_KEY", "TOKENROUTER_BASE_URL"), "TokenRouter"
     else:
-        missing = [v for v in ("LITELLM_API_KEY", "LITELLM_BASE_URL") if not os.environ.get(v)]
-        if missing:
-            raise RuntimeError(f"Missing env vars for LiteLLM: {missing}")
+        required, label = ("LITELLM_API_KEY", "LITELLM_BASE_URL"), "LiteLLM"
+    missing = [v for v in required if not os.environ.get(v)]
+    if missing:
+        raise RuntimeError(f"Missing env vars for {label}: {missing}")
     return LiteLLMBackend(model_id)
 
 

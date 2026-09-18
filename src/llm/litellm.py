@@ -5,11 +5,13 @@ in the model-string prefix — no separate platform flag is needed:
 
     watsonx/meta-llama/llama-3-3-70b-instruct   → IBM WatsonX
     litellm_proxy/GCP/claude-4-sonnet            → LiteLLM proxy
+    tokenrouter/z-ai/glm-5.3-flash               → TokenRouter (OpenAI-compatible)
 
 Credentials are resolved from environment variables based on the prefix:
 
-    watsonx/*  :  WATSONX_APIKEY, WATSONX_PROJECT_ID, WATSONX_URL (optional)
-    otherwise  :  LITELLM_API_KEY, LITELLM_BASE_URL
+    watsonx/*      :  WATSONX_APIKEY, WATSONX_PROJECT_ID, WATSONX_URL (optional)
+    tokenrouter/*  :  TOKENROUTER_API_KEY, TOKENROUTER_BASE_URL
+    otherwise      :  LITELLM_API_KEY, LITELLM_BASE_URL
 
 Profiling hooks (all opt-in via env vars, zero impact when unset):
 
@@ -32,6 +34,7 @@ import os
 from datetime import datetime, timezone
 
 from .base import LLMBackend
+from .routers import TOKENROUTER_PREFIX, resolve_model, resolve_router_creds
 
 _log = logging.getLogger(__name__)
 _callbacks_registered = False
@@ -79,6 +82,55 @@ def _register_callbacks() -> None:
             _log.warning("litellm.integrations.custom_logger not available; metrics file skipped.")
 
 
+def omits_temperature(model_id: str) -> bool:
+    """True for models that reject an explicit temperature.
+
+    OpenAI's gpt-5 family only accepts temperature=1, and litellm raises
+    UnsupportedParamsError for anything else rather than clamping. We drop the
+    parameter for those models so the API default applies.
+
+    NOTE: this means gpt-5 models do NOT run at temperature=0 like the rest of
+    the backends, so their run-to-run variance is higher. Keep that in mind when
+    comparing evaluation numbers across backbones.
+    """
+    return "gpt-5" in resolve_model(model_id)
+
+
+def resolve_call_kwargs(model_id: str) -> dict:
+    """Return the litellm model string and endpoint credentials for *model_id*.
+
+    Split out from :meth:`LiteLLMBackend.generate` so routing can be tested
+    without issuing a network call.
+    """
+    if model_id.startswith("watsonx/"):
+        kwargs = {
+            "model": model_id,
+            "api_key": os.environ["WATSONX_APIKEY"],
+            "project_id": os.environ["WATSONX_PROJECT_ID"],
+        }
+        if url := os.environ.get("WATSONX_URL"):
+            kwargs["api_base"] = url
+        return kwargs
+
+    if model_id.startswith(TOKENROUTER_PREFIX):
+        creds = resolve_router_creds(model_id)
+        # TokenRouter speaks the OpenAI protocol. litellm picks that transport
+        # from an "openai/" prefix; without it the bare model name has no
+        # provider and the call is rejected before it reaches api_base.
+        return {
+            "model": f"openai/{resolve_model(model_id)}",
+            "api_key": creds.api_key,
+            "api_base": creds.base_url,
+        }
+
+    # litellm_proxy/* keeps its prefix — litellm resolves that provider itself.
+    return {
+        "model": model_id,
+        "api_key": os.environ["LITELLM_API_KEY"],
+        "api_base": os.environ["LITELLM_BASE_URL"],
+    }
+
+
 class LiteLLMBackend(LLMBackend):
     """LLM backend using the litellm library.
 
@@ -86,6 +138,7 @@ class LiteLLMBackend(LLMBackend):
         model_id: litellm model string with provider prefix, e.g.:
                   ``"watsonx/meta-llama/llama-3-3-70b-instruct"``
                   ``"litellm_proxy/GCP/claude-4-sonnet"``
+                  ``"tokenrouter/z-ai/glm-5.3-flash"``
     """
 
     def __init__(self, model_id: str) -> None:
@@ -99,20 +152,12 @@ class LiteLLMBackend(LLMBackend):
         import litellm
 
         kwargs: dict = {
-            "model": self._model_id,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature,
             "max_tokens": 2048,
+            **resolve_call_kwargs(self._model_id),
         }
-
-        if self._model_id.startswith("watsonx/"):
-            kwargs["api_key"] = os.environ["WATSONX_APIKEY"]
-            kwargs["project_id"] = os.environ["WATSONX_PROJECT_ID"]
-            if url := os.environ.get("WATSONX_URL"):
-                kwargs["api_base"] = url
-        else:
-            kwargs["api_key"] = os.environ["LITELLM_API_KEY"]
-            kwargs["api_base"] = os.environ["LITELLM_BASE_URL"]
+        if not omits_temperature(self._model_id):
+            kwargs["temperature"] = temperature
 
         response = litellm.completion(**kwargs)
         return response.choices[0].message.content

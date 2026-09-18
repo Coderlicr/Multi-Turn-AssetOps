@@ -24,9 +24,11 @@ def _dump_tool_call(tool_call: ToolCallLog) -> dict:
 
 
 class BehaviorLog:
-    def __init__(self, log_dir: Path | None = None) -> None:
+    def __init__(self, log_dir: Path | None = None, reuse_mode: str | None = None) -> None:
         self._log_dir = log_dir or _DEFAULT_LOG_DIR
         self._log_dir.mkdir(parents=True, exist_ok=True)
+        # Stamped on every record so ablation runs are self-identifying.
+        self._reuse_mode = reuse_mode
 
     def write(
         self,
@@ -54,6 +56,8 @@ class BehaviorLog:
             "output_artifact_ids": output_artifact_ids,
             "status": status,
         }
+        if self._reuse_mode is not None:
+            record["reuse_mode"] = self._reuse_mode
         if turn_id is not None:
             record["turn_id"] = turn_id
         if task is not None:

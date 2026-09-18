@@ -30,7 +30,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-_TMP_BASE = Path(tempfile.gettempdir()) / "assetops"
+_TMP_BASE = Path("/tmp/assetops")
 from typing import Annotated, List, Optional, Union
 from pydantic import Field
 

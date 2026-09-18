@@ -18,6 +18,7 @@ from .data import (
     date_conditions,
     fetch_work_orders,
     filter_df,
+    display_equipment_id,
     get_transition_matrix,
     load,
     normalize_equipment_id,
@@ -54,6 +55,7 @@ def get_work_orders(
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -62,14 +64,14 @@ def get_work_orders(
     except ValueError as exc:
         return ErrorResult(error=str(exc))
     if not wos:
-        return ErrorResult(error=f"No work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(error=f"No work orders found for equipment '{display_id}'")
     return WorkOrdersResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         start_date=start_date,
         end_date=end_date,
         total=len(wos),
         work_orders=wos,
-        message=f"Found {len(wos)} work orders for '{equipment_id}'.",
+        message=f"Found {len(wos)} work orders for '{display_id}'.",
     )
 
 
@@ -86,6 +88,7 @@ def get_preventive_work_orders(
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -94,14 +97,14 @@ def get_preventive_work_orders(
     except ValueError as exc:
         return ErrorResult(error=str(exc))
     if not wos:
-        return ErrorResult(error=f"No preventive work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(error=f"No preventive work orders found for equipment '{display_id}'")
     return WorkOrdersResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         start_date=start_date,
         end_date=end_date,
         total=len(wos),
         work_orders=wos,
-        message=f"Found {len(wos)} preventive work orders for '{equipment_id}'.",
+        message=f"Found {len(wos)} preventive work orders for '{display_id}'.",
     )
 
 
@@ -118,6 +121,7 @@ def get_corrective_work_orders(
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     df = load("wo_events")
     if df is None:
         return ErrorResult(error="Work order data not available")
@@ -126,14 +130,14 @@ def get_corrective_work_orders(
     except ValueError as exc:
         return ErrorResult(error=str(exc))
     if not wos:
-        return ErrorResult(error=f"No corrective work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(error=f"No corrective work orders found for equipment '{display_id}'")
     return WorkOrdersResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         start_date=start_date,
         end_date=end_date,
         total=len(wos),
         work_orders=wos,
-        message=f"Found {len(wos)} corrective work orders for '{equipment_id}'.",
+        message=f"Found {len(wos)} corrective work orders for '{display_id}'.",
     )
 
 
@@ -150,6 +154,7 @@ def get_events(
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     df = load("events")
     if df is None:
         return ErrorResult(error="Event data not available")
@@ -169,16 +174,16 @@ def get_events(
 
     filtered = filter_df(df, cond)
     if filtered is None or filtered.empty:
-        return ErrorResult(error=f"No events found for equipment_id '{equipment_id}'")
+        return ErrorResult(error=f"No events found for equipment '{display_id}'")
 
     events = [row_to_event(row) for _, row in filtered.iterrows()]
     return EventsResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         start_date=start_date,
         end_date=end_date,
         total=len(events),
         events=events,
-        message=f"Found {len(events)} events for '{equipment_id}'.",
+        message=f"Found {len(events)} events for '{display_id}'.",
     )
 
 
@@ -216,6 +221,7 @@ def get_work_order_distribution(
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     wo_df = load("wo_events")
     fc_df = load("failure_codes")
     if wo_df is None:
@@ -236,7 +242,7 @@ def get_work_order_distribution(
         filtered = filtered[filtered["actual_finish"] <= end_dt]
 
     if filtered.empty:
-        return ErrorResult(error=f"No work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(error=f"No work orders found for equipment '{display_id}'")
 
     counts = (
         filtered.groupby(["primary_code", "secondary_code"])
@@ -266,12 +272,12 @@ def get_work_order_distribution(
         )
 
     return WorkOrderDistributionResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         start_date=start_date,
         end_date=end_date,
         total_work_orders=int(filtered.shape[0]),
         distribution=distribution,
-        message=f"Distribution across {len(distribution)} failure code(s) for '{equipment_id}'.",
+        message=f"Distribution across {len(distribution)} failure code(s) for '{display_id}'.",
     )
 
 
@@ -294,6 +300,7 @@ def predict_next_work_order(
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     wo_df = load("wo_events")
     pfc_df = load("primary_failure_codes")
     if wo_df is None:
@@ -308,7 +315,7 @@ def predict_next_work_order(
     cond = date_conditions(equipment_id, "actual_finish", start_date, end_date)
     filtered = filter_df(wo_df, cond)
     if filtered is None or filtered.empty:
-        return ErrorResult(error=f"No historical work orders found for equipment_id '{equipment_id}'")
+        return ErrorResult(error=f"No historical work orders found for equipment '{display_id}'")
 
     filtered = filtered.sort_values("actual_finish").reset_index(drop=True)
     transition_matrix = get_transition_matrix(filtered, "primary_code")
@@ -335,12 +342,12 @@ def predict_next_work_order(
         predictions.append(entry)
 
     return NextWorkOrderPredictionResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         start_date=start_date,
         end_date=end_date,
         last_work_order_type=last_type,
         predictions=predictions,
-        message=f"Predicted next work order for '{equipment_id}' based on last type '{last_type}'.",
+        message=f"Predicted next work order for '{display_id}' based on last type '{last_type}'.",
     )
 
 
@@ -355,6 +362,7 @@ def get_alert_rules(
         equipment_id: Equipment name or identifier, e.g. ``"Chiller 6"`` or ``"CWC04013"``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     alert_df = load("alert_events")
     if alert_df is None:
         return ErrorResult(error="Alert events data not available")
@@ -364,7 +372,7 @@ def get_alert_rules(
     }
     filtered = filter_df(alert_df, cond)
     if filtered is None or filtered.empty:
-        return ErrorResult(error=f"No alert events found for equipment '{equipment_id}'")
+        return ErrorResult(error=f"No alert events found for equipment '{display_id}'")
 
     rule_ids = sorted(filtered["rule_id"].dropna().unique().tolist())
 
@@ -379,10 +387,10 @@ def get_alert_rules(
     ]
     summary = ", ".join(f"{r.rule_id} ({r.rule_name})" if r.rule_name else r.rule_id for r in rules)
     return AlertRulesResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         total=len(rules),
         rules=rules,
-        message=f"Found {len(rules)} alert rule(s) for '{equipment_id}': {summary}.",
+        message=f"Found {len(rules)} alert rule(s) for '{display_id}': {summary}.",
     )
 
 
@@ -406,6 +414,7 @@ def analyze_alert_to_failure(
         end_date: End of date range (inclusive), format ``YYYY-MM-DD``.
     """
     equipment_id = normalize_equipment_id(equipment_id)
+    display_id = display_equipment_id(equipment_id)
     alert_df = load("alert_events")
     if alert_df is None:
         return ErrorResult(error="Alert events data not available")
@@ -440,7 +449,7 @@ def analyze_alert_to_failure(
             hint = f" Available rules for this equipment: [{available_str}]."
         else:
             hint = ""
-        return ErrorResult(error=f"No alert events found for equipment '{equipment_id}' and rule '{rule_id}'.{hint}")
+        return ErrorResult(error=f"No alert events found for equipment '{display_id}' and rule '{rule_id}'.{hint}")
 
     filtered = filtered.sort_values("start_time").reset_index(drop=True)
 
@@ -475,11 +484,11 @@ def analyze_alert_to_failure(
         )
 
     return AlertToFailureResult(
-        equipment_id=equipment_id,
+        equipment_id=display_id,
         rule_id=rule_id,
         start_date=start_date,
         end_date=end_date,
         total_alerts_analyzed=total,
         transitions=entries,
-        message=f"Analyzed {total} alert occurrences for rule '{rule_id}' on '{equipment_id}'.",
+        message=f"Analyzed {total} alert occurrences for rule '{rule_id}' on '{display_id}'.",
     )

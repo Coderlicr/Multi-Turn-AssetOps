@@ -48,7 +48,7 @@ class FakeLLM:
                 }
             )
         if "Latest user message:\nWhat could be causing this during the same period?" in prompt:
-            if "artifact_fr_001" in prompt:
+            if "[artifact_fr_001]" in prompt:
                 return json.dumps(
                     {
                         "next_node": "respond_to_user",
@@ -76,7 +76,7 @@ class FakeLLM:
                 }
             )
 
-        if "artifact_dc_001" in prompt:
+        if "[artifact_dc_001]" in prompt:
             return json.dumps(
                 {
                     "next_node": "respond_to_user",
@@ -309,9 +309,12 @@ async def test_cli_multi_turn_repl_runs_until_quit(monkeypatch, capsys):
             max_steps=3,
             no_stream=True,
             no_log=True,
+            log_dir=None,
             reference_date="2020-06-20",
             multi_turn=True,
             parallel=True,
+            reuse_mode="none",
+            max_repeat_dispatch=2,
         )
     )
 
@@ -319,3 +322,22 @@ async def test_cli_multi_turn_repl_runs_until_quit(monkeypatch, capsys):
     assert "answer:first turn" in out
     assert "answer:second turn" in out
     assert created_kwargs["parallel"] is True
+    assert created_kwargs["reuse_mode"] == "none"
+    assert created_kwargs["max_repeat_dispatch"] == 2
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("parallel", [False, True])
+@pytest.mark.parametrize("reuse_mode", ["full", "none", "stateless"])
+async def test_reuse_modes_work_with_parallel_execution(tmp_path, parallel, reuse_mode):
+    runner = SupervisorSpecialistRunner(
+        llm=FakeLLM(), mcp_tools=FakeMCPToolClient(), quiet=True,
+        log_dir=tmp_path, reference_date="2020-06-20", max_steps=5,
+        parallel=parallel, reuse_mode=reuse_mode,
+    )
+    await runner.run_turn("The temperature of our chiller at Site MAIN seems unusually high lately.")
+    assert runner.last_dialog_state["conversation_memory"].active_artifact_ids == ["artifact_dc_001"]
+    await runner.run_turn("What did you find?")
+    memory = runner.last_dialog_state["conversation_memory"]
+    assert memory.active_artifact_ids == (["artifact_dc_001"] if reuse_mode == "full" else [])
+    assert len(memory.recent_turns) == (1 if reuse_mode == "stateless" else 2)

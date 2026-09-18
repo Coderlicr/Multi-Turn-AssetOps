@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import date
 
 from llm import LLMBackend
 from .models import Plan, PlanStep
@@ -20,6 +21,8 @@ You are a planning assistant for industrial asset operations and maintenance.
 Decompose the question below into a sequence of subtasks. For each subtask,
 assign a server and select the exact tool to call. Do NOT include tool arguments —
 they will be resolved at execution time from the task description and prior results.
+
+Today's date is {today}. Use this as the anchor for relative time phrases.
 
 Available servers and tools:
 {servers}
@@ -57,6 +60,8 @@ ONLY the remaining steps needed to complete the original goal, taking into \
 account what has already succeeded and what went wrong.
 
 Original question: {question}
+
+Today's date is {today}. Use this as the anchor for relative time phrases.
 
 Original plan:
 {original_plan}
@@ -151,8 +156,9 @@ def parse_plan(raw: str) -> Plan:
 class Planner:
     """Decomposes a question into a structured execution plan using an LLM."""
 
-    def __init__(self, llm: LLMBackend) -> None:
+    def __init__(self, llm: LLMBackend, reference_date: str | None = None) -> None:
         self._llm = llm
+        self._reference_date = reference_date
 
     def generate_replan(
         self,
@@ -192,6 +198,7 @@ class Planner:
         )
         prompt = _REPLAN_PROMPT.format(
             question=question,
+            today=self._today(),
             original_plan=original_plan.raw,
             execution_history=history_text or "(none)",
             failed_steps=failed_text or "(none)",
@@ -218,6 +225,9 @@ class Planner:
         servers_text = "\n\n".join(
             f"{name}:\n{desc}" for name, desc in server_descriptions.items()
         )
-        prompt = _PLAN_PROMPT.format(servers=servers_text, question=question)
+        prompt = _PLAN_PROMPT.format(servers=servers_text, question=question, today=self._today())
         raw = self._llm.generate(prompt)
         return parse_plan(raw)
+
+    def _today(self) -> str:
+        return self._reference_date or date.today().isoformat()

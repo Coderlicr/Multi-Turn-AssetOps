@@ -9,7 +9,7 @@ import pickle
 import numpy as np
 import pandas as pd
 
-from .io import _read_ts_data
+from .io import _parse_timestamps, _read_ts_data
 
 
 # ── Conformal anomaly detection ───────────────────────────────────────────────
@@ -377,9 +377,8 @@ def _get_tsad_aligned_data(
         np.arange(len(dataset_config["column_specifiers"]["target_columns"]))
     )
 
-    df_data[dataset_config["column_specifiers"]["timestamp_column"]] = pd.to_datetime(
-        df_data[dataset_config["column_specifiers"]["timestamp_column"]]
-    )
+    timestamp_column = dataset_config["column_specifiers"]["timestamp_column"]
+    df_data[timestamp_column] = _parse_timestamps(df_data[timestamp_column])
     dataset_inference = _get_tsfm_dataloaders(
         df_data,
         {"prediction_length": prediction_length, "context_length": context_length},

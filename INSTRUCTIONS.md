@@ -28,6 +28,7 @@ This directory contains the MCP servers and infrastructure for the AssetOpsBench
   - [Parallel Specialist tool calls](#parallel-specialist-tool-calls)
   - [Behavior logs](#behavior-logs)
   - [Python API](#python-api-1)
+- [Stirrup Agent](#stirrup-agent)
 - [Connect to Claude Desktop](#connect-to-claude-desktop)
 - [Running Tests](#running-tests)
 - [Architecture](#architecture)
@@ -56,7 +57,7 @@ Run from the **repo root**:
 uv sync
 ```
 
-`uv sync` creates a virtual environment at `.venv/`, installs all dependencies, and registers the CLI entry points (`plan-execute`, `*-mcp-server`). You can either prefix commands with `uv run` (no activation needed) or activate the venv once for your shell session:
+`uv sync` creates a virtual environment at `.venv/`, installs all dependencies, and registers the CLI entry points (`plan-execute`, `supervisor-specialist`, `stirrup-agent`, `*-mcp-server`). You can either prefix commands with `uv run` (no activation needed) or activate the venv once for your shell session:
 
 ```bash
 source .venv/bin/activate   # macOS / Linux
@@ -133,9 +134,18 @@ uv run vibration-mcp-server
 
 | Variable                              | Default                                                                  | Description                                                                 |
 | ------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| `SS_MODEL_ID`                         | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8`              | Default model for `supervisor-specialist`                                   |
+| `DEFAULT_MODEL_ID`                         | `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8`              | Default model for `supervisor-specialist`                                   |
 | `SS_MAX_STEPS`                        | `12`                                                                     | Maximum graph/specialist steps per turn                                     |
 | `SUPERVISOR_SPECIALIST_PARALLELISM`   | `4`                                                                      | Maximum concurrent tool calls inside one Specialist parallel batch          |
+| `SS_REUSE_MODE` | `full` | Cross-turn evidence reuse policy: `full`, `none`, or `stateless`. |
+| `SS_MAX_REPEAT_DISPATCH` | `0` | Maximum consecutive dispatches to one specialist per turn; `0` disables the guard. |
+
+**TokenRouter** — all runners (when `--model-id` starts with `tokenrouter/`)
+
+| Variable               | Default      | Description                         |
+| ---------------------- | ------------ | ----------------------------------- |
+| `TOKENROUTER_API_KEY`  | _(required)_ | TokenRouter API key                 |
+| `TOKENROUTER_BASE_URL` | _(required)_ | OpenAI-compatible TokenRouter URL   |
 
 **Profiling** — all optional; enable by setting the relevant keys in `.env`
 
@@ -487,10 +497,13 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--model-id MODEL_ID` | LiteLLM model string with provider prefix. Defaults to `SS_MODEL_ID` or the built-in WatsonX model. |
+| `--model-id MODEL_ID` | LiteLLM model string with provider prefix. Defaults to `DEFAULT_MODEL_ID` or the built-in WatsonX model. |
 | `--max-steps N` | Maximum graph/specialist steps per turn. Defaults to `SS_MAX_STEPS` or `12`. |
 | `--reference-date YYYY-MM-DD` | Anchor date for relative time windows such as `past month`. |
 | `--multi-turn` | Start a REPL and retain in-memory conversation state across turns. |
+| `--reuse-mode {full,none,stateless}` | Cross-turn evidence reuse policy; defaults to `SS_REUSE_MODE` or `full`. |
+| `--no-artifact-reuse` | Alias for `--reuse-mode none`. |
+| `--max-repeat-dispatch N` | Maximum consecutive dispatches to one specialist; defaults to `SS_MAX_REPEAT_DISPATCH` or `0` (disabled). |
 | `--parallel` | Enable parallel Specialist tool batches and deterministic multi-asset coverage guards. |
 | `--no-stream` | Suppress streaming event output on stderr. |
 | `--no-log` | Suppress persistent behavior logs under `logs/supervisor_specialist/`. |
@@ -643,6 +656,51 @@ async def main():
 
 asyncio.run(main())
 ```
+## Stirrup Agent
+
+`stirrup-agent` runs an in-process Stirrup loop over the Multi-Turn AssetOps MCP
+servers. By default it discovers 26 tools from `iot`, `utilities`, `fmsr`,
+`tsfm`, and `wo`; `vibration` is intentionally excluded from the default set.
+MCP tools are exposed to the model as `{server}__{tool}`, for example
+`iot__history_csv`.
+
+Tools-only run through TokenRouter:
+
+```bash
+uv run stirrup-agent --no-code \
+  --reference-date 2020-06-20 \
+  --model-id tokenrouter/<model-name> \
+  "List the assets available at site MAIN."
+```
+
+`--reference-date YYYY-MM-DD` anchors relative phrases such as "recent",
+"last month", and "past 30 days". When omitted, Stirrup uses today's UTC date.
+
+The code track is enabled by default. Use the local backend when Python needs
+to read a host-side file returned by an MCP tool:
+
+```bash
+uv run stirrup-agent --code-backend local \
+  --reference-date 2020-06-20 \
+  --model-id tokenrouter/<model-name> \
+  "Fetch Chiller 6 history and analyse its numeric columns."
+```
+
+For Docker-backed code execution, build the image once:
+
+```bash
+docker build -f src/agent/stirrup_agent/Dockerfile.code -t assetops-code .
+```
+
+Override the complete default server set with repeatable `--server` arguments:
+
+```bash
+uv run stirrup-agent --no-code \
+  --server vibration=vibration-mcp-server \
+  "List known bearings."
+```
+
+Passing any `--server` option replaces the defaults rather than extending them.
 
 ---
 

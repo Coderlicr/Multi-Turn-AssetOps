@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from llm import LLMBackend
+from .behavior_log import PlanExecuteBehaviorLog, plan_step_to_dict
 from .models import Plan, PlanStep, StepResult
 
 _log = logging.getLogger(__name__)
@@ -70,11 +71,15 @@ class Executor:
         self,
         llm: LLMBackend,
         server_paths: dict[str, Path | str] | None = None,
+        behavior_log: PlanExecuteBehaviorLog | None = None,
+        reference_date: str | None = None,
     ) -> None:
         self._llm = llm
         self._server_paths = (
             DEFAULT_SERVER_PATHS if server_paths is None else server_paths
         )
+        self._behavior_log = behavior_log
+        self._reference_date = reference_date
 
     async def get_server_descriptions(self) -> dict[str, str]:
         """Query each registered MCP server and return formatted tool signatures."""
@@ -99,10 +104,15 @@ class Executor:
         plan: Plan,
         question: str,
         prior_context: dict[int, "StepResult"] | None = None,
+        *,
+        case_id: str | None = None,
+        turn_id: str | None = None,
+        plan_id: str | None = None,
     ) -> list[StepResult]:
         """Execute all plan steps in dependency order."""
         ordered = plan.resolved_order()
         executable_steps: list[PlanStep] = []
+        execution_steps: list[dict[str, Any]] = []
         # ignore invalid plan steps (e.g. server="none")
         for step in ordered:
             if step.server not in self._server_paths:
@@ -110,6 +120,24 @@ class Executor:
                     "Skipping step %d [%s]: unknown server.",
                     step.step_number,
                     step.server,
+                )
+                execution_steps.append(
+                    self._execution_step_record(
+                        step=step,
+                        result=StepResult(
+                            step_number=step.step_number,
+                            task=step.task,
+                            server=step.server,
+                            response="",
+                            error=(
+                                f"Unknown server '{step.server}'. "
+                                f"Registered servers: {list(self._server_paths)}"
+                            ),
+                            tool=step.tool,
+                            tool_args=step.tool_args,
+                        ),
+                        skipped=True,
+                    )
                 )
                 continue
             executable_steps.append(step)
@@ -157,6 +185,9 @@ class Executor:
                 )
                 context[step.step_number] = skipped
                 results.append(skipped)
+                execution_steps.append(
+                    self._execution_step_record(step=step, result=skipped, skipped=True)
+                )
                 continue
 
             _log.info(
@@ -174,7 +205,77 @@ class Executor:
                 _log.warning("Step %d FAILED: %s", step.step_number, result.error)
             context[step.step_number] = result
             results.append(result)
+            execution_steps.append(self._execution_step_record(step=step, result=result))
+        self._write_plan_execution_event(
+            case_id=case_id,
+            turn_id=turn_id,
+            plan_id=plan_id,
+            execution_steps=execution_steps,
+        )
         return results
+
+    def _write_plan_execution_event(
+        self,
+        *,
+        case_id: str | None,
+        turn_id: str | None,
+        plan_id: str | None,
+        execution_steps: list[dict[str, Any]],
+    ) -> None:
+        if self._behavior_log is None or case_id is None:
+            return
+        tool_calls = []
+        for step_record in execution_steps:
+            if step_record["skipped"]:
+                continue
+            tool_name = step_record["tool"]
+            if not tool_name or tool_name.lower() in ("none", "null"):
+                continue
+            tool_calls.append(
+                {
+                    "order": len(tool_calls) + 1,
+                    "tool_name": tool_name,
+                    "args": step_record["tool_args"],
+                    "status": step_record["status"],
+                    "result": step_record["response"] if step_record["status"] == "ok" else None,
+                    "error": step_record["error_message"],
+                    "step_number": step_record["step_number"],
+                    "server": step_record["server"],
+                    "task": step_record["task"],
+                }
+            )
+        status = "ok" if all(step["status"] == "ok" for step in execution_steps) else "failed"
+        self._behavior_log.write(
+            case_id=case_id,
+            turn_id=turn_id,
+            agent_role="executor",
+            task_type="plan_execution",
+            status=status,
+            tool_calls=tool_calls,
+            plan_id=plan_id,
+            execution_steps=execution_steps,
+            error_message=None if status == "ok" else "One or more plan steps failed.",
+        )
+
+    @staticmethod
+    def _execution_step_record(
+        *,
+        step: PlanStep,
+        result: StepResult,
+        skipped: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "step_number": step.step_number,
+            "server": step.server,
+            "task": step.task,
+            "tool": result.tool,
+            "tool_args": result.tool_args,
+            "status": "ok" if result.success else "failed",
+            "response": result.response,
+            "error_message": result.error,
+            "skipped": skipped,
+            "plan_step": plan_step_to_dict(step),
+        }
 
     async def execute_step(
         self,
@@ -216,7 +317,13 @@ class Executor:
         try:
             _log.info("Step %d: calling LLM to resolve args.", step.step_number)
             resolved_args = await _resolve_args_with_llm(
-                question, step.task, step.tool, tool_schema, context, self._llm
+                question,
+                step.task,
+                step.tool,
+                tool_schema,
+                context,
+                self._llm,
+                reference_date=self._reference_date,
             )
 
             response = await _call_tool(server_path, step.tool, resolved_args)
@@ -274,9 +381,11 @@ async def _resolve_args_with_llm(
     tool_schema: str,
     context: dict[int, StepResult],
     llm: LLMBackend,
+    reference_date: str | None = None,
 ) -> dict:
     """Generate tool arguments from the task description and prior step results."""
     from datetime import date
+    today = reference_date or date.today().isoformat()
     _MAX_CTX_CHARS = 2000
     context_text = "\n".join(
         f"Step {n}: " + (
@@ -292,7 +401,7 @@ async def _resolve_args_with_llm(
         .replace("{tool}", tool)
         .replace("{tool_schema}", tool_schema or "(unknown)")
         .replace("{context}", context_text or "(none)")
-        .replace("{today}", date.today().isoformat())
+        .replace("{today}", today)
     )
     raw = llm.generate(prompt)
     resolved = _parse_json(raw)
