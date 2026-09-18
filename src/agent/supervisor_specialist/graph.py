@@ -40,6 +40,15 @@ from agent.supervisor_specialist.schemas import (
 
 _log = logging.getLogger(__name__)
 
+#: Full cross-turn evidence reuse (default system).
+REUSE_FULL = "full"
+#: Ablation: keep natural-language dialogue memory, drop structured evidence reuse.
+REUSE_NONE = "none"
+#: Ablation: no cross-turn state at all; every turn starts from scratch.
+REUSE_STATELESS = "stateless"
+
+REUSE_MODES = (REUSE_FULL, REUSE_NONE, REUSE_STATELESS)
+
 _FINAL_RESPONSE_PROMPT = """\
 You are a senior industrial asset operations expert.
 Based on the conversation memory and analysis below, write a clear and structured response to the user's latest question.
@@ -100,6 +109,7 @@ class Dependencies:
     event_stream: EventStream
     behavior_log: BehaviorLog
     llm: object  # LiteLLMBackend
+    reuse_mode: str = REUSE_FULL
 
 
 def _unique(values: list[str]) -> list[str]:
@@ -211,6 +221,33 @@ def _build_rolling_summary(memory: ConversationMemory) -> str:
     return "\n".join(lines)[-1500:]
 
 
+def _drop_evidence_carry_over(
+    memory: ConversationMemory,
+    case_state: CaseState | None,
+    reuse_mode: str,
+) -> None:
+    """Remove every cross-turn reference to structured evidence.
+
+    Used by the reuse ablations. The artifact store itself keeps the data; this
+    only clears the reference paths a later turn could otherwise follow, so the
+    supervisor neither sees earlier artifacts nor cites IDs it cannot resolve
+    (an unresolvable ID would fail decision validation and burn agent steps,
+    penalising the ablation for the wrong reason).
+    """
+    memory.active_artifact_ids = []
+    for turn in memory.recent_turns:
+        turn.artifact_ids = []
+    if case_state is not None:
+        case_state.artifact_ids = []
+        # root_cause / recommended_actions are promoted from artifact payloads,
+        # so they are structured evidence too.
+        case_state.root_cause = None
+        case_state.recommended_actions = []
+        if reuse_mode == REUSE_STATELESS:
+            case_state.asset_ids = []
+            case_state.focus_metrics = []
+
+
 def _turn_id(state: GraphState) -> str:
     return f"turn_{state.get('turn_index', 1):03d}"
 
@@ -315,6 +352,14 @@ def build_graph(deps: Dependencies, checkpointer=None):
         )
         memory = state.get("conversation_memory") or ConversationMemory()
         old_case_state = state.get("case_state")
+
+        # Opening the turn is what makes earlier artifacts invisible when the
+        # store is turn-scoped (reuse ablation); under full reuse it is a no-op.
+        deps.artifact_store.begin_turn()
+        if deps.reuse_mode != REUSE_FULL:
+            _drop_evidence_carry_over(memory, old_case_state, deps.reuse_mode)
+            if deps.reuse_mode == REUSE_STATELESS:
+                memory = ConversationMemory()
 
         if old_case_state is None:
             case_state = CaseState(

@@ -101,7 +101,12 @@ def _warn_profile_keys_in_base_env() -> None:
 
 # ── WandB helper ──────────────────────────────────────────────────────────────
 
-def _wandb_init(run_id: str, system: str, dialog_ids: Optional[list[int]]) -> Optional[object]:
+def _wandb_init(
+    run_id: str,
+    system: str,
+    dialog_ids: Optional[list[int]],
+    reuse_mode: str = "full",
+) -> Optional[object]:
     """Initialize a WandB run if wandb is installed and WANDB_API_KEY is set."""
     if not os.environ.get("WANDB_API_KEY"):
         return None
@@ -109,10 +114,16 @@ def _wandb_init(run_id: str, system: str, dialog_ids: Optional[list[int]]) -> Op
         import wandb
         run = wandb.init(
             project=os.environ.get("WANDB_PROJECT", "multi-turn-assetops"),
-            name=f"{system}__{run_id}",
-            group=system,
-            tags=[system] + ([f"dialog_{d}" for d in dialog_ids] if dialog_ids else ["all"]),
-            config={"system": system, "run_id": run_id, "dialog_ids": dialog_ids or "all"},
+            name=f"{system}__reuse-{reuse_mode}__{run_id}",
+            group=f"{system}__reuse-{reuse_mode}",
+            tags=[system, f"reuse-{reuse_mode}"]
+            + ([f"dialog_{d}" for d in dialog_ids] if dialog_ids else ["all"]),
+            config={
+                "system": system,
+                "reuse_mode": reuse_mode,
+                "run_id": run_id,
+                "dialog_ids": dialog_ids or "all",
+            },
         )
         wandb.define_metric("dialog/id")
         wandb.define_metric("dialog/*", step_metric="dialog/id")
@@ -445,6 +456,8 @@ async def run_dialog(
     output_dir: pathlib.Path,
     model_id: Optional[str],
     verbose: bool,
+    reuse_mode: str = "full",
+    per_turn_timeout: int = PER_TURN_TIMEOUT,
 ) -> tuple[dict, dict]:
     """Run one dialog. Returns (result_record, llm_metrics)."""
     dialog_id = scenario["id"]
@@ -475,6 +488,8 @@ async def run_dialog(
     ]
     if model_id:
         cmd.extend(["--model-id", model_id])
+    # Ablation arm: same binary, same metrics collection, different reuse policy.
+    cmd.extend(["--reuse-mode", reuse_mode])
 
     stderr_path = output_dir / f"dialog_{dialog_id:02d}_stderr.txt"
     metrics_path = output_dir / f"dialog_{dialog_id:02d}_llm_metrics.jsonl"
@@ -487,6 +502,7 @@ async def run_dialog(
         "title": scenario["title"],
         "category": scenario["category"],
         "reference_date": ref_date,
+        "reuse_mode": reuse_mode,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "completed_at": None,
         "duration_seconds": None,
@@ -540,8 +556,8 @@ async def run_dialog(
 
             try:
                 response = await asyncio.wait_for(
-                    _read_until_prompt(proc.stdout, timeout=PER_TURN_TIMEOUT),
-                    timeout=PER_TURN_TIMEOUT + 5,
+                    _read_until_prompt(proc.stdout, timeout=per_turn_timeout),
+                    timeout=per_turn_timeout + 5,
                 )
                 elapsed = round(time.monotonic() - turn_start, 2)
                 turn_record.update(response=response, duration_seconds=elapsed, status="ok")
@@ -614,6 +630,9 @@ async def run_all(
     dialog_ids: Optional[list[int]],
     system: str,
     verbose: bool,
+    reuse_mode: str = "full",
+    per_turn_timeout: int = PER_TURN_TIMEOUT,
+    per_dialog_timeout: int = PER_DIALOG_TIMEOUT,
 ) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -626,10 +645,12 @@ async def run_all(
     run_id = f"run_{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')}"
     print(f"\nEval run : {run_id}")
     print(f"System   : {system}")
+    print(f"Reuse    : {reuse_mode}")
+    print(f"Timeouts : {per_turn_timeout}s/turn, {per_dialog_timeout}s/dialog")
     print(f"Output   : {output_dir}")
     print(f"Dialogs  : {[s['id'] for s in scenarios]}")
 
-    wandb = _wandb_init(run_id, system, dialog_ids)
+    wandb = _wandb_init(run_id, system, dialog_ids, reuse_mode)
 
     all_results: list[dict] = []
     all_llm_metrics: list[dict] = []
@@ -640,19 +661,20 @@ async def run_all(
     for scenario in scenarios:
         try:
             result, llm_metrics = await asyncio.wait_for(
-                run_dialog(scenario, output_dir, model_id, verbose),
-                timeout=PER_DIALOG_TIMEOUT,
+                run_dialog(scenario, output_dir, model_id, verbose, reuse_mode,
+                           per_turn_timeout),
+                timeout=per_dialog_timeout,
             )
         except asyncio.TimeoutError:
             result = {
                 "dialog_id": scenario["id"], "title": scenario["title"],
                 "category": scenario["category"], "reference_date": scenario["reference_date"],
-                "status": "timed_out", "error": f"Dialog-level timeout ({PER_DIALOG_TIMEOUT}s)",
-                "turns": [], "duration_seconds": PER_DIALOG_TIMEOUT,
+                "status": "timed_out", "error": f"Dialog-level timeout ({per_dialog_timeout}s)",
+                "turns": [], "duration_seconds": per_dialog_timeout,
                 "llm_metrics": None, "behavior_log": None, "stderr_file": None,
             }
             llm_metrics = {}
-            print(f"  ⏱  Dialog {scenario['id']} hit {PER_DIALOG_TIMEOUT}s hard cap")
+            print(f"  ⏱  Dialog {scenario['id']} hit {per_dialog_timeout}s hard cap")
 
         out_file = output_dir / f"dialog_{scenario['id']:02d}.json"
         out_file.write_text(json.dumps(result, indent=2, ensure_ascii=False))
@@ -702,6 +724,9 @@ async def run_all(
     summary = {
         "run_id": run_id,
         "system": system,
+        "reuse_mode": reuse_mode,
+        "per_turn_timeout": per_turn_timeout,
+        "per_dialog_timeout": per_dialog_timeout,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "total_dialogs": len(all_results),
         **counts,
@@ -762,6 +787,16 @@ def main() -> None:
                         help="Results directory (default: eval/results/<timestamp>).")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Print a short preview of each turn response.")
+    parser.add_argument("--reuse-mode", choices=["full", "none", "stateless"],
+                        default="full",
+                        help="Cross-turn evidence reuse policy for the ablation "
+                             "(default: full = the full system).")
+    parser.add_argument("--per-turn-timeout", type=int, default=PER_TURN_TIMEOUT,
+                        help="Seconds allowed per turn (default: %(default)s). Raise this for "
+                             "reuse ablations: without reuse every turn redoes the expensive "
+                             "work, and truncation would bias both cost and completion metrics.")
+    parser.add_argument("--per-dialog-timeout", type=int, default=PER_DIALOG_TIMEOUT,
+                        help="Seconds allowed per dialog (default: %(default)s).")
     args = parser.parse_args()
 
     sys.path.insert(0, str(pathlib.Path(__file__).parent))
@@ -772,7 +807,9 @@ def main() -> None:
         else EVAL_OUT_ROOT / datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
     )
 
-    asyncio.run(run_all(SCENARIOS, out_dir, args.model_id, args.dialogs, args.system, args.verbose))
+    asyncio.run(run_all(SCENARIOS, out_dir, args.model_id, args.dialogs,
+                        args.system, args.verbose, args.reuse_mode,
+                        args.per_turn_timeout, args.per_dialog_timeout))
 
 
 if __name__ == "__main__":

@@ -15,6 +15,8 @@ import os
 from pathlib import Path
 import sys
 
+from agent.supervisor_specialist.graph import REUSE_FULL, REUSE_MODES, REUSE_NONE
+
 _FALLBACK_MODEL = "watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"
 
 
@@ -67,6 +69,26 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enter a REPL and retain supervisor-specialist memory across turns.",
     )
+    p.add_argument(
+        "--reuse-mode",
+        choices=list(REUSE_MODES),
+        default=os.environ.get("SS_REUSE_MODE", REUSE_FULL),
+        help=(
+            "Cross-turn evidence reuse policy (default: %(default)s). "
+            "'full' keeps artifacts available across turns; "
+            "'none' scopes artifacts to the turn that produced them while "
+            "keeping natural-language dialogue memory; "
+            "'stateless' drops all cross-turn state. "
+            "The two ablations exist to isolate the contribution of evidence reuse."
+        ),
+    )
+    p.add_argument(
+        "--no-artifact-reuse",
+        dest="reuse_mode",
+        action="store_const",
+        const=REUSE_NONE,
+        help="Alias for --reuse-mode none.",
+    )
     return p
 
 
@@ -89,7 +111,10 @@ async def _run(args: argparse.Namespace) -> None:
         quiet=args.no_stream,
         log_dir=log_dir,
         reference_date=args.reference_date,
+        reuse_mode=args.reuse_mode,
     )
+    if args.reuse_mode != REUSE_FULL and not args.no_stream:
+        print(f"[ablation] cross-turn evidence reuse: {args.reuse_mode}", file=sys.stderr)
 
     if not args.multi_turn:
         response = await runner.run(args.question)
