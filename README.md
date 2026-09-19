@@ -1,314 +1,237 @@
-# Towards Multi-Turn Dialog Systems for Industrial Asset Operations and Maintenance
+# Interactive Industrial Operations and Maintenance with Cross-Turn Evidence Reuse
 
-## 1. Problem Statement
+Multi-Turn AssetOps is an interactive multi-agent system for industrial operations and maintenance (O&M). It preserves tool outputs as structured, reusable evidence so later dialogue turns can continue an investigation without repeating expensive data retrieval and time-series analysis.
 
-Industrial operations and maintenance (O&M) question answering is naturally multi-turn: users refine queries, ask follow-up questions, and expect the system to reuse previous evidence while invoking specialized tools. The baseline Plan-Execute single-agent workflow is fragile in this setting because it plans mostly linearly, repeats expensive tool calls, struggles with tool-argument hallucination, and expands context rapidly after failures.
+The system uses an evidence-aware supervisor and four domain specialists for data collection, time-series analysis, failure reasoning, and maintenance planning. Industrial tools are exposed through Model Context Protocol (MCP) servers and operate over IoT, work-order, failure-mode, and time-series data.
 
-This project targets **inference-time system performance** for a tool-centric industrial diagnostic agent. The primary bottleneck is not GPU training throughput, but end-to-end inference latency and cost across remote LLM calls, MCP tool execution, CouchDB retrieval, and multi-agent routing. We optimize the runtime by adding memory-aware artifact reuse, Supervisor-Specialist routing, and optional parallel MCP tool execution.
+## Why cross-turn evidence reuse?
 
----
+Industrial investigations are iterative. A user may first ask whether a chiller is behaving abnormally, then ask what caused the anomaly, and finally ask which explanation best fits the evidence. A conventional agent can repeat retrieval and analysis on every turn. Multi-Turn AssetOps instead stores each useful result as a typed artifact with:
 
-## 2. Model/Application Description
+- a persistent artifact ID;
+- asset and time-window metadata;
+- the producing specialist and source tools;
+- a structured payload and concise summary;
+- references to upstream artifacts.
 
-- **Application:** Multi-turn industrial asset operations assistant for fault diagnosis, predictive maintenance, operational monitoring, maintenance planning, and end-to-end remediation workflows.
-- **LLM backend:** LiteLLM wrapper over IBM WatsonX. The default model in the CLI is `watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8`.
-- **Agent architectures compared:**
-  - **Baseline:** Plan-Execute single-agent workflow with sequential MCP tool calls.
-  - **SS:** Supervisor-Specialist architecture implemented with LangGraph.
-  - **SSA:** Supervisor-Specialist Advanced with parallel MCP tool batches.
-- **Specialist agents:** Data Collection, Time Series Analysis, Failure Reasoning, and Maintenance Planning, routed by a Supervisor agent.
-- **Forecasting/anomaly models:** IBM Granite-TSFM / TinyTimeMixer artifacts under `src/servers/tsfm/artifacts/tsfm_models/`; conformal anomaly detection and TSFM forecasting are exposed through the TSFM MCP server.
-- **Frameworks and libraries:** Python 3.12+, LangGraph, LiteLLM, FastMCP/MCP, CouchDB, PyTorch/Transformers/Granite-TSFM, pandas, NumPy, SciPy, Pydantic, Weights & Biases.
-- **Dataset:** 16 multi-turn industrial diagnosis scenarios in `eval/scenarios.py`, derived from the AssetOpsBench-style workflow design in `DESIGN.md`.
-- **Operational data:** IoT time-series data for MAIN site chillers 3, 4, 6, and 9; work orders, events, alerts, and failure-code mappings loaded into CouchDB.
-- **Hardware target:** Remote IBM WatsonX inference for LLM calls plus local Python/MCP/CouchDB execution. The performance study measures system-level inference latency rather than model training throughput on a fixed GPU.
+The supervisor inspects these artifacts before every decision. It can reuse existing evidence, dispatch only the specialist needed to fill a gap, or answer directly when the evidence is sufficient.
 
----
+## System architecture
 
-## 3. Final Results Summary
+```mermaid
+flowchart LR
+    U[User request] --> S[Evidence-aware supervisor]
+    M[Conversation state] --> S
+    E[(Artifact store)] --> S
 
-Measurements below are from the presentation results over 16 benchmark dialogs using IBM WatsonX / Llama-4-Maverick-17B-FP8.
+    S -->|missing raw evidence| D[Data collection]
+    S -->|missing analytics| T[Time-series analysis]
+    S -->|missing diagnosis| F[Failure reasoning]
+    S -->|missing action plan| P[Maintenance planning]
+    S -->|evidence sufficient| R[Response]
 
-**Headline numbers**
-
-| Result | Baseline | Optimized / SS | Improvement |
-| --- | ---: | ---: | --- |
-| End-to-end dialog latency | 323.5 s avg/dialog | 265.5 s avg/dialog | **1.9x faster end-to-end** |
-| TSFM tool latency | 159.5 s avg/dialog | 37.4 s avg/dialog | **4.3x TSFM tool speedup** |
-| Follow-up turn latency | 145 s on SS turn 1 | 34 s avg on SS turns 2-5 | **4.2x faster after turn 1** |
-
-**Profiler run-level summary**
-
-| Metric | Baseline | SS | SSA |
-| --- | ---: | ---: | ---: |
-| Total wall time | 83.9 min | 65.2 min | 73.3 min |
-| Total tokens consumed | 2,553,150 | 3,322,234 | 3,623,430 |
-| Total LLM API calls | 841 | 941 | 751 |
-
-**Latency breakdown by architecture**
-
-| Architecture | LLM Time | Tool Time | Routing / Other |
-| --- | ---: | ---: | ---: |
-| Baseline Plan-Execute | 43.0% | 47.3% | 9.7% |
-| SS | 69.3% | 26.3% | 4.4% |
-| SSA | 72.3% | 23.9% | 3.8% |
-
-**Headline result:** The Supervisor-Specialist system shifts the dominant bottleneck away from redundant tool execution: tool time drops from 47.3% to 26.3% of wall time, TSFM latency drops from 159.5 s to 37.4 s per dialog, and end-to-end evaluation wall time improves from 83.9 min to 65.2 min across the benchmark. 
-
----
-
-## 4. Repository Structure
-
-```text
-.
-|-- README.md
-|-- DESIGN.md / DESIGN_annotated.md
-|-- PROFILING.md
-|-- pyproject.toml
-|-- uv.lock
-|-- eval/
-|   |-- run_eval.py
-|   |-- scenarios.py
-|   `-- results/
-|-- logs/
-|   `-- supervisor_specialist/
-|-- src/
-|   |-- agent/
-|   |   |-- cli.py
-|   |   |-- plan_execute/
-|   |   `-- supervisor_specialist/
-|   |       |-- cli.py
-|   |       |-- graph.py
-|   |       |-- runner.py
-|   |       |-- agents/
-|   |       `-- runtime/
-|   |-- couchdb/
-|   |   |-- docker-compose.yaml
-|   |   |-- init_asset_data.py
-|   |   |-- init_wo.py
-|   |   `-- sample_data/
-|   |-- llm/
-|   |   |-- base.py
-|   |   `-- litellm.py
-|   `-- servers/
-|       |-- iot/
-|       |-- wo/
-|       |-- tsfm/
-|       |-- fmsr/
-|       |-- utilities/
-|       `-- vibration/
-`-- wandb/
+    D --> MCP[MCP servers]
+    T --> MCP
+    F --> MCP
+    P --> MCP
+    MCP -->|typed artifacts| E
+    E --> R
 ```
 
----
+| Component | Responsibility | Typical artifacts |
+| --- | --- | --- |
+| Supervisor | Assesses evidence, routes work, and decides when to stop | Routing decisions and final responses |
+| Data Collection Specialist | Retrieves assets, sensors, histories, events, and work orders | `inventory`, `dataset_ref` |
+| Time-Series Analysis Specialist | Computes statistics, anomaly detection, forecasting, and fine-tuning | `analysis_result` |
+| Failure Reasoning Specialist | Maps observed behavior to failure modes and competing diagnoses | `reasoning_result` |
+| Maintenance Planning Specialist | Produces recovery, verification, and maintenance actions | `planning_result`, `draft_action` |
 
-## 5. Reproducibility Instructions
+The default MCP servers are:
 
-### A. Environment Setup
+- `iot` for sites, assets, sensors, and historical measurements;
+- `wo` for work orders, events, alerts, and failure codes;
+- `tsfm` for forecasting, anomaly detection, and TSFM fine-tuning;
+- `fmsr` for failure-mode and sensor mappings;
+- `utilities` for CSV statistics, JSON reading, and date/time utilities.
+
+## Example investigation
+
+The paper demonstration follows Chiller 6 at Site `MAIN` across three turns:
+
+1. **Detect the problem.** The system retrieves sensor data and performs anomaly analysis, creating reusable data and analysis artifacts.
+2. **Explain the problem.** The supervisor reuses those artifacts and requests only the missing failure reasoning and supporting statistics.
+3. **Compare the causes.** The accumulated evidence already supports the answer, so the supervisor responds without another tool call.
+
+This illustrates the main execution policy: stored evidence guides both specialist selection and termination.
+
+## Getting started
+
+### Requirements
+
+- Python 3.12+
+- [`uv`](https://docs.astral.sh/uv/)
+- Docker, for the local CouchDB service
+- credentials for IBM WatsonX, TokenRouter, or a LiteLLM-compatible endpoint
+
+### Install
 
 ```bash
 git clone https://github.com/Coderlicr/Multi-Turn-AssetOps.git
 cd Multi-Turn-AssetOps
-
 uv sync
-source .venv/bin/activate
-```
-
-The project uses `uv` and requires Python 3.12+. Optional TSFM dependencies include PyTorch, Transformers, and `granite-tsfm`.
-
-Stirrup can use the same MCP servers through TokenRouter. Its default server
-set is `iot`, `utilities`, `fmsr`, `tsfm`, and `wo` (`vibration` is excluded):
-
-```bash
-uv run stirrup-agent --no-code \
-  --reference-date 2020-06-20 \
-  --model-id tokenrouter/<model-name> \
-  "List the assets available at site MAIN."
-```
-
-The Stirrup code-execution track is enabled by default. See
-[`INSTRUCTIONS.md`](INSTRUCTIONS.md#stirrup-agent) for Docker/local backend and
-workspace-preservation options.
-
-`docker compose` initializes the IoT CouchDB database from `src/couchdb/sample_data/iot/main.json`, filtered to `Chiller 3`, `Chiller 4`, `Chiller 6`, and `Chiller 9`.
-
-Create a `.env` file from `.env.example` and fill the WatsonX credentials:
-
-```bash
 cp .env.example .env
 ```
 
-Important environment variables:
+Configure one model provider in `.env`. For WatsonX:
 
-```text
-COUCHDB_URL=http://localhost:5984
-IOT_DBNAME=chiller
-WO_DBNAME=workorder
-COUCHDB_USERNAME=admin
-COUCHDB_PASSWORD=password
-
-WATSONX_APIKEY=<your key>
-WATSONX_PROJECT_ID=<your project id>
-WATSONX_URL=https://us-south.ml.cloud.ibm.com
-
+```dotenv
 DEFAULT_MODEL_ID=watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
-SS_MAX_STEPS=12
-SUPERVISOR_SPECIALIST_PARALLELISM=4
+WATSONX_APIKEY=your-api-key
+WATSONX_PROJECT_ID=your-project-id
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
 ```
 
-### B. Data Setup
+`tokenrouter/<model>` and `litellm_proxy/<model>` identifiers are also supported through `TOKENROUTER_*` and `LITELLM_*` credentials. See [`.env.example`](.env.example) for all settings.
 
-Place the downloaded IoT `main.json` at:
+### Start the data services
 
-```text
-src/couchdb/sample_data/iot/main.json
-```
-
-Start CouchDB and initialize the databases:
+The repository includes work-order data, a Chiller 6 sample, and vibration data. The full evaluation dataset expects `main.json` under `src/couchdb/sample_data/iot/`.
 
 ```bash
 docker compose -f src/couchdb/docker-compose.yaml up -d
-python src/couchdb/check_couchdb_data.py
+uv run python src/couchdb/check_couchdb_data.py
 ```
 
-The setup imports:
+The default databases are `chiller`, `workorder`, and `vibration` at `http://localhost:5984`.
 
-- IoT sensor data for Chiller 3, Chiller 4, Chiller 6, and Chiller 9 into the `chiller` database.
-- Work-order and alert data from `src/couchdb/sample_data/work_order/` into the `workorder` database.
-- Optional vibration data into the `vibration` database.
+## Run the agents
 
-### C. Run the Baseline
+### Supervisor–Specialist
+
+Run a single turn:
 
 ```bash
-uv run plan-execute --show-plan --show-history \
-  "What is the current date and time? Also list assets at site MAIN."
+uv run supervisor-specialist \
+  --reference-date 2020-06-20 \
+  "Investigate unusually high temperature on Chiller 6 at Site MAIN over the past month."
 ```
 
-### D. Run Supervisor-Specialist
-
-Single-turn example:
-
-```bash
-uv run supervisor-specialist --reference-date 2020-06-20 \
-  "The temperature of our chiller at Site MAIN seems unusually high lately. Can you look into it?"
-```
-
-Multi-turn session:
+Start a multi-turn session:
 
 ```bash
 uv run supervisor-specialist --multi-turn --reference-date 2020-06-20
 ```
 
-Parallel tool batches:
+Example conversation:
+
+```text
+> Is Chiller 6 behaving abnormally over the past month?
+> What could be causing this during the same period?
+> Which cause best fits the data?
+```
+
+Enable independent specialist tool calls in parallel:
 
 ```bash
-uv run supervisor-specialist --parallel --reference-date 2020-06-20 \
+uv run supervisor-specialist \
+  --parallel \
+  --reference-date 2020-06-20 \
   "Compare Chiller 3, Chiller 4, Chiller 6, and Chiller 9 over the past month."
 ```
 
-### E. Run the Benchmark Evaluation
+Cross-turn state is controlled with `--reuse-mode`:
 
-Run all 16 dialogs:
+| Mode | Behavior |
+| --- | --- |
+| `full` | Reuses dialogue memory and structured artifacts across turns; default |
+| `none` | Keeps natural-language dialogue memory but hides artifacts from earlier turns |
+| `stateless` | Drops all cross-turn state |
+
+Run the no-reuse ablation:
 
 ```bash
-uv run python eval/run_eval.py --system supervisor-specialist
+uv run supervisor-specialist \
+  --multi-turn \
+  --reuse-mode none \
+  --reference-date 2020-06-20
 ```
 
-Run a subset:
+### Plan–Execute baseline
 
 ```bash
-uv run python eval/run_eval.py --system supervisor-specialist --dialogs 1 2
+uv run plan-execute \
+  --show-plan \
+  --show-history \
+  --reference-date 2020-06-20 \
+  "List the assets available at Site MAIN."
 ```
 
-Override the model:
+### Stirrup agent (ReAct Loop)
+
+The optional Stirrup runner exposes the same default MCP server set. Its code-execution track is enabled by default; use `--no-code` for tools-only execution.
+
+```bash
+uv run stirrup-agent \
+  --no-code \
+  --reference-date 2020-06-20 \
+  --model-id tokenrouter/<model-name> \
+  "List the assets available at Site MAIN."
+```
+
+## Reproduce the evaluation
+
+Run all 16 Supervisor–Specialist dialogues:
 
 ```bash
 uv run python eval/run_eval.py \
   --system supervisor-specialist \
+  --reuse-mode full
+```
+
+Run the no-reuse ablation:
+
+```bash
+uv run python eval/run_eval.py \
+  --system supervisor-specialist \
+  --reuse-mode none
+```
+
+Run selected dialogues or override the model:
+
+```bash
+uv run python eval/run_eval.py \
+  --dialogs 1 6 12 \
   --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
 ```
 
-Each evaluation writes `dialog_XX.json`, per-dialog metrics JSONL files, and `summary.json` into `eval/results/<timestamp>/`.
+The harness writes per-dialog responses, LLM/tool/CouchDB metrics, behavior logs, and `summary.json` under `eval/results/<run-id>/`. Profiling integrations for Weights & Biases and LangSmith are optional; configuration is documented in [PROFILING.md](PROFILING.md).
 
-### F. Profiling and Tracking
-
-Profiling is implemented at three layers:
-
-1. **LLM call metrics:** `src/llm/litellm.py` writes prompt tokens, completion tokens, total tokens, model name, and latency when `LITELLM_METRICS_FILE` is set.
-2. **MCP tool metrics:** Plan-Execute and Supervisor-Specialist tool wrappers write tool name, server, latency, and success status when `TOOL_METRICS_FILE` is set.
-3. **CouchDB query metrics:** IoT, WO, and vibration servers write query latency, status, and document counts when `COUCHDB_METRICS_FILE` is set.
-
-For WandB and LangSmith, copy `.env.profiling.example` to `.env.profiling` and fill:
-
-```text
-WANDB_API_KEY=<your key>
-WANDB_PROJECT=multi-turn-assetops
-LANGCHAIN_API_KEY=<your key>
-LANGCHAIN_PROJECT=<your project>
-```
-
-Then run:
+Dedicated entry points are also available for the architecture-specific evaluation runners:
 
 ```bash
-uv run python eval/run_eval.py --system supervisor-specialist
+uv run python eval/run_plan_execute_eval.py
+uv run python eval/run_supervisor_specialist_eval.py
 ```
 
-The evaluation harness logs per-dialog latency, token usage, LLM calls, tool calls, CouchDB query metrics, per-turn success, and run-level summaries.
+## Repository layout
 
----
-
-## 6. Results and Observations
-
-- **Artifact reuse improves multi-turn efficiency.** The Supervisor-Specialist graph stores structured artifacts and rolling conversation memory so follow-up turns can reuse prior site, asset, sensor, time-window, anomaly, and failure-mode context.
-- **Tool execution was the initial bottleneck.** In the baseline, tool calls account for 47.3% of wall time. SS reduces this to 26.3%, and SSA reduces it further to 23.9%.
-- **TSFM dominates baseline latency.** Time-series forecasting and anomaly tools drop from 159.5 s per dialog in Plan-Execute to 37.4 s in SS and 36.1 s in SSA.
-- **LLM latency becomes the new ceiling.** After reducing redundant tool work, LLM API time accounts for about 69-72% of wall time in the Supervisor-Specialist variants.
-- **Parallelism helps selectively, but routing and reuse matter more.** SSA has the lowest tool fraction and fewer LLM calls than SS, but higher total tokens and longer total wall time than SS in the reported run.
-- **Reliability improves with structured routing.** Tool-name validity reaches 100%, schema failures drop by 68.7%, execution failures drop by 59.0%, and recovery failures are eliminated in the reported benchmark.
-
-Representative per-server tool latency:
-
-| Server | Baseline | SS | SSA |
-| --- | ---: | ---: | ---: |
-| TSFM | 159.5 s | 37.4 s | 36.1 s |
-| IoT | 24.9 s | 12.9 s | 11.8 s |
-| WO | 12.4 s | 13.4 s | 12.9 s |
-| Utilities | 4.0 s | 4.6 s | 4.1 s |
-| FMSR | 9.9 s | 12.1 s | 19.7 s |
-
----
-
-## 7. Implementation Notes
-
-### Stirrup Runner — `src/agent/stirrup_agent/`
-
-- `cli.py` — entry point for the `stirrup-agent` command
-- `runner.py` — TokenRouter-aware Stirrup runner and five-server MCP defaults
-- `workspace_bridge.py` — makes file-producing MCP results available to code execution
-
-### LLM Backends — `src/llm/`
-
-- `litellm.py` — LiteLLM / WatsonX backend implementation
-- `routers.py` — LiteLLM Proxy / TokenRouter prefix and credential resolution
-- `base.py` — abstract `LLMBackend` interface
-
-
-- MCP servers live in `src/servers/` and expose IoT, work-order, time-series, failure-mode, utility, and vibration tools.
-- The Plan-Execute baseline is implemented under `src/agent/plan_execute/`.
-- The Supervisor-Specialist system is implemented under `src/agent/supervisor_specialist/`.
-- `src/agent/supervisor_specialist/runtime/artifact_store.py` holds in-memory artifacts for cross-turn reuse.
-- `src/agent/supervisor_specialist/runtime/mcp_tools.py` implements MCP routing and both sequential and parallel tool-call execution.
-- `eval/scenarios.py` defines the 16 benchmark dialogs and reference dates.
-- `PROFILING.md` documents all profiling metrics and dashboard semantics.
-
----
-
-## Acknowledgements
-
-We are grateful to Dr. Dhaval Patel and Dr. Kaoutar El Maghraoui from IBM Research for their valuable guidance and mentorship throughout this work.
-
----
+```text
+.
+├── eval/                              # 16 dialogue scenarios and evaluation runners
+├── src/
+│   ├── agent/
+│   │   ├── plan_execute/              # Plan–Execute baseline
+│   │   ├── stirrup_agent/             # Optional Stirrup runner
+│   │   └── supervisor_specialist/     # Supervisor, specialists, graph, and artifact store
+│   ├── couchdb/                       # Local CouchDB setup and sample data
+│   ├── llm/                           # LiteLLM backend and provider routing
+│   └── servers/                       # MCP servers: IoT, WO, TSFM, FMSR, utilities, vibration
+├── DESIGN.md                          # Scenario and system design notes
+├── INSTRUCTIONS.md                    # Detailed usage documentation
+├── PROFILING.md                       # Metrics and profiling setup
+└── pyproject.toml                     # Dependencies and CLI entry points
+```
 
 ## License
 
-Released under the Apache-2.0 License. See [`LICENSE`](LICENSE).
+Released under the [Apache License 2.0](LICENSE).
