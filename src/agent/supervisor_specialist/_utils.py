@@ -55,20 +55,57 @@ def parse_json_from_llm(raw: str) -> dict | None:
     return None
 
 
+_PARAM_DOC_CHARS = 180
+
+
+def _param_type(spec: dict) -> str:
+    """Readable type for a JSON-schema property, including anyOf unions."""
+    if "type" in spec:
+        return str(spec["type"])
+    options = [o.get("type") for o in spec.get("anyOf", []) if o.get("type")]
+    concrete = [o for o in options if o != "null"]
+    if concrete:
+        return "|".join(concrete)
+    return "any"
+
+
 def format_tool_schemas_for_prompt(tool_schemas: list[dict]) -> str:
-    """Format a list of tool schema dicts into a human-readable string for LLM prompts."""
+    """Format tool schemas for an LLM prompt, keeping per-parameter guidance.
+
+    The signature line alone ("save_model_dir: string?") drops the description
+    and the default, so a model with nothing to go on invents a value. Across
+    39 recorded fine-tuning calls not one passed save_model_dir in the form its
+    schema asks for -- a relative directory name, default "tuned_models" --
+    every one passed an invented absolute path, and the ones that worked only
+    worked because the invented path happened to be writable.
+    """
     lines = []
     for t in tool_schemas:
         name = t.get("name", "")
-        description = t.get("description", "")
+        description = (t.get("description") or "").strip()
         schema = t.get("input_schema", {})
         props = schema.get("properties", {})
         required_set = set(schema.get("required", []))
+
         params = ", ".join(
-            f"{k}: {v.get('type', 'any')}{'?' if k not in required_set else ''}"
+            f"{k}: {_param_type(v)}{'' if k in required_set else '?'}"
             for k, v in props.items()
         )
-        lines.append(f"- {name}({params}): {description}")
+        lines.append(f"- {name}({params}): {description.splitlines()[0] if description else ''}")
+
+        for key, spec in props.items():
+            doc = (spec.get("description") or "").strip().replace("\n", " ")
+            has_default = "default" in spec
+            if not doc and not has_default:
+                continue
+            bits = []
+            if key not in required_set:
+                bits.append(
+                    f"optional, default {spec['default']!r}" if has_default else "optional"
+                )
+            if doc:
+                bits.append(doc[:_PARAM_DOC_CHARS] + ("..." if len(doc) > _PARAM_DOC_CHARS else ""))
+            lines.append(f"    {key}: {' — '.join(bits)}")
     return "\n".join(lines) if lines else "(no tools available)"
 
 
