@@ -10,6 +10,18 @@ from typing import Any
 
 _log = logging.getLogger(__name__)
 
+#: How much of one tool result is shown to the model.
+#: Measured over 1005 successful calls: result sizes are bimodal. 85% are already
+#: under 2000 chars (csv_stats 1.8KB, history_csv 1.2KB, sensors 0.9KB), and the
+#: rest dump bulk raw data (iot.history 720KB, wo.get_events up to 443KB) that no
+#: reasonable cap can hold.
+#: The ReAct prompt re-sends every prior result on each step (up to 20 calls), so
+#: this value is multiplied by the number of calls made. Measured worst case over
+#: 190 specialist runs: 20.7K chars in the final step at 2000, 44.7K at 8000.
+#: 4000 keeps wo.predict_next_work_order (max 4.7KB) nearly whole and recovers most
+#: of wo.get_work_order_distribution (p90 4.1KB) without doubling the worst case.
+TOOL_RESULT_PREVIEW_CHARS = 4000
+
 _PATH_RE = re.compile(r"(/[^\s'\"),]+(?:\.csv|\.json|\.pkl|\.txt|/))")
 
 
@@ -176,8 +188,8 @@ def format_tool_results_for_prompt(tool_results: list) -> str:
     for r in tool_results:
         if r.status == "ok":
             result_str = str(r.result or "")
-            result_preview = result_str[:2000]
-            if len(result_str) > 2000:
+            result_preview = result_str[:TOOL_RESULT_PREVIEW_CHARS]
+            if len(result_str) > TOOL_RESULT_PREVIEW_CHARS:
                 result_preview += "... [truncated]"
             lines.append(f"[{r.order}] {r.tool_name} -> OK\n{result_preview}")
         else:

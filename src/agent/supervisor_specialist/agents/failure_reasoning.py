@@ -46,5 +46,6 @@ class FailureReasoningSpecialist(SpecialistAgent):
         "fmsr.get_failure_modes",
         "fmsr.get_failure_mode_sensor_mapping",
         "utilities.csv_stats",
+        "utilities.csv_query",
         "utilities.json_reader",
     }

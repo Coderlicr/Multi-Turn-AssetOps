@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-from agent.supervisor_specialist._utils import extract_file_paths
 from agent.supervisor_specialist.agents.base import SpecialistAgent
 
 
@@ -38,7 +37,8 @@ class TimeSeriesAnalysisSpecialist(SpecialistAgent):
     )
     capability_summary = (
         "Run TSFM models over a CSV that already exists: anomaly detection, forecasting, "
-        "fine-tuning, model/task discovery, plus descriptive CSV statistics"
+        "fine-tuning, model/task discovery, plus reading its result files row by row "
+        "(anomaly timestamps, per-sensor severity) and descriptive CSV statistics"
     )
     cannot_do = (
         "retrieve sensor history itself (no iot tools) - it needs a dataset_ref artifact with a csv_path",
@@ -54,33 +54,9 @@ class TimeSeriesAnalysisSpecialist(SpecialistAgent):
         "tsfm.run_tsad",
         "tsfm.run_integrated_tsad",
         "utilities.csv_stats",
+        "utilities.csv_query",
         "utilities.json_reader",
     }
-
-    def _done_blocking_message(self, task, input_artifacts, results) -> str | None:
-        text = f"{task.task_type} {task.goal}".lower()
-        if "fine-tune" not in text and "finetune" not in text and "fine tune" not in text:
-            return None
-        if any(
-            r.tool_name == "tsfm.run_tsfm_finetuning" and r.status == "ok"
-            for r in results
-        ):
-            return None
-
-        has_csv = False
-        for artifact in input_artifacts:
-            if any(path.lower().endswith(".csv") for path in extract_file_paths(artifact.payload)):
-                has_csv = True
-                break
-        if not has_csv:
-            return None
-
-        return (
-            "Fine-tuning task is not complete. A CSV input artifact is available, "
-            "but tsfm.run_tsfm_finetuning has not succeeded. Call "
-            "tsfm.run_tsfm_finetuning with the concrete csv_path before done=true; "
-            "utilities.csv_stats alone is not fine-tuning."
-        )
 
     def _postprocess_artifacts(self, task, artifacts, results) -> None:
         del task

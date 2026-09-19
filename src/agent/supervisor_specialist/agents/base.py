@@ -21,6 +21,7 @@ from abc import ABC
 from pathlib import Path
 
 from agent.supervisor_specialist._utils import (
+    TOOL_RESULT_PREVIEW_CHARS,
     call_llm,
     extract_file_paths,
     format_artifacts_summary,
@@ -101,6 +102,7 @@ Critical rules:
 - Do NOT repeat a tool that already succeeded with the same arguments
 - If a tool has FAILED and you are about to call it again with essentially the same arguments, do NOT retry — output {{"done": true}} or try a completely different tool instead
 - When you receive a CSV file path (from any prior tool result or input artifact) and you are unsure of the column names, call utilities.csv_stats with ONLY the csv_path (omit the columns parameter) first — this returns all_columns so you know the exact column names before making further calls
+- Pick the right CSV reader: utilities.csv_stats gives aggregates over numeric columns only and DROPS text columns such as timestamp, KPI and anomaly_label. When the task asks which timestamps are anomalous, which sensor they belong to, or how severe each one is, call utilities.csv_query instead — e.g. filters=[{{"column": "anomaly_label", "op": "==", "value": true}}] with group_by=["KPI"] or sort_by="anomaly_score"
 {extra_rules}
 JSON:"""
 
@@ -181,8 +183,8 @@ def format_specialist_catalog(specialists: list[type["SpecialistAgent"]]) -> str
 def _format_react_results(results: list[ToolCallResult]) -> str:
     """Format prior tool results for the ReAct step prompt.
 
-    Shows full result values (up to 2000 chars each) so LLM can extract
-    file paths, IDs, or other values to use in subsequent tool calls.
+    Shows result values up to TOOL_RESULT_PREVIEW_CHARS each so the LLM can
+    extract file paths, IDs, or other values to use in subsequent tool calls.
     """
     if not results:
         return "(none — this is the first tool call)"
@@ -190,8 +192,8 @@ def _format_react_results(results: list[ToolCallResult]) -> str:
     for r in results:
         args_preview = json.dumps(r.args, ensure_ascii=False)[:300]
         if r.status == "ok":
-            result_str = str(r.result)[:2000]
-            if len(str(r.result or "")) > 2000:
+            result_str = str(r.result)[:TOOL_RESULT_PREVIEW_CHARS]
+            if len(str(r.result or "")) > TOOL_RESULT_PREVIEW_CHARS:
                 result_str += "... [truncated]"
             lines.append(
                 f"[{r.order}] {r.tool_name}({args_preview}) → OK\n"
@@ -435,16 +437,6 @@ class SpecialistAgent(ABC):
 
             # LLM signals it is done
             if parsed.get("done"):
-                done_blocker = self._done_blocking_message(task, input_artifacts, results)
-                if done_blocker:
-                    results.append(ToolCallResult(
-                        order=call_num,
-                        tool_name="internal.done_guard",
-                        args={},
-                        status="failed",
-                        error=done_blocker,
-                    ))
-                    continue
                 _log.debug("%s: ReAct loop done after %d call(s).", self.role, call_num - 1)
                 break
 
@@ -541,14 +533,6 @@ class SpecialistAgent(ABC):
                     break
 
         return results, None
-
-    def _done_blocking_message(
-        self,
-        task: TaskEnvelope,
-        input_artifacts: list[ArtifactEnvelope],
-        results: list[ToolCallResult],
-    ) -> str | None:
-        return None
 
     def _postprocess_artifacts(
         self,

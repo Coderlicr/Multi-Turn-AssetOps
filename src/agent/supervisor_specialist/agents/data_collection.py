@@ -43,6 +43,7 @@ class DataCollectionSpecialist(SpecialistAgent):
         "wo.get_failure_codes",
         "wo.get_alert_rules",
         "utilities.csv_stats",
+        "utilities.csv_query",
         "utilities.json_reader",
         "utilities.current_date_time",
         "utilities.current_time_english",

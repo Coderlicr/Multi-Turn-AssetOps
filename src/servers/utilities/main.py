@@ -135,6 +135,174 @@ def csv_stats(
     return json.dumps({"csv_path": csv_path, "all_columns": list(df.columns), "stats": stats})
 
 
+_CSV_QUERY_ROW_CAP = 200
+#: The agent prompt shows only the first N characters of a tool result and cuts the
+#: rest, which would slice a large JSON payload mid-object. Trim to fit here instead,
+#: so what reaches the model is always complete and says how much was left out.
+#: Keep this just under agent.supervisor_specialist._utils.TOOL_RESULT_PREVIEW_CHARS
+#: (4000); the cap applies to this JSON string itself with nothing prepended, so only
+#: a small margin is needed. Raise both together if either changes.
+_CSV_QUERY_CHAR_BUDGET = 3800
+
+
+def _fit_to_budget(payload: dict, key: str, total: int) -> str:
+    """Drop trailing items from payload[key] until the serialized JSON fits.
+
+    returned_* and truncated are maintained inside the loop so they are counted
+    against the budget too — setting them afterwards would push the payload back
+    over it and make "truncated" itself the thing that gets cut off.
+    """
+    items = payload[key]
+    while True:
+        payload[key] = items
+        payload[f"returned_{key}"] = len(items)
+        payload["truncated"] = len(items) < total
+        text = json.dumps(payload)
+        if len(text) <= _CSV_QUERY_CHAR_BUDGET or not items:
+            return text
+        items = items[:-1]
+
+
+def _coerce(series: pd.Series, value):
+    """Make *value* comparable with *series* without trusting its literal type."""
+    if pd.api.types.is_bool_dtype(series):
+        if isinstance(value, str):
+            return value.strip().lower() in ("true", "1", "yes")
+        return bool(value)
+    if pd.api.types.is_numeric_dtype(series):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
+def _apply_filter(df: pd.DataFrame, spec: dict) -> pd.DataFrame:
+    """Apply one {column, op, value} filter.
+
+    Structured filters on purpose: a free-text expression would have to be
+    eval'd, and the caller here is an LLM.
+    """
+    column = spec.get("column")
+    op = (spec.get("op") or "==").strip()
+    value = spec.get("value")
+    if column not in df.columns:
+        raise ValueError(f"Unknown column '{column}'. Available: {list(df.columns)}")
+
+    series = df[column]
+    if op == "contains":
+        return df[series.astype(str).str.contains(str(value), case=False, na=False)]
+    if op == "in":
+        values = value if isinstance(value, list) else [value]
+        return df[series.astype(str).isin([str(v) for v in values])]
+
+    target = _coerce(series, value)
+    ops = {
+        "==": lambda: series == target,
+        "!=": lambda: series != target,
+        ">": lambda: series > target,
+        ">=": lambda: series >= target,
+        "<": lambda: series < target,
+        "<=": lambda: series <= target,
+    }
+    if op not in ops:
+        raise ValueError(f"Unsupported op '{op}'. Use one of {sorted(ops) + ['contains', 'in']}.")
+    return df[ops[op]()]
+
+
+@mcp.tool()
+def csv_query(
+    csv_path: Annotated[str, Field(description="Absolute path to a .csv file, e.g. the results_file returned by run_tsad/run_integrated_tsad or the csv_path from history_csv.")],
+    filters: Annotated[Optional[List[dict]], Field(description='Row filters, ANDed together. Each is {"column": str, "op": one of ==,!=,>,>=,<,<=,contains,in, "value": any}. Example: [{"column": "anomaly_label", "op": "==", "value": true}].')] = None,
+    columns: Annotated[Optional[List[str]], Field(description="Columns to return. Omit for all columns.")] = None,
+    group_by: Annotated[Optional[List[str]], Field(description='Return one summary row per group instead of raw rows, e.g. ["KPI"] to summarise per sensor.')] = None,
+    sort_by: Annotated[Optional[str], Field(description="Column to sort by, e.g. anomaly_score.")] = None,
+    descending: Annotated[bool, Field(description="Sort direction; true = largest first.")] = True,
+    limit: Annotated[int, Field(description=f"Maximum rows or groups to return (hard cap {_CSV_QUERY_ROW_CAP}). The result is trimmed further if needed so it fits the {_CSV_QUERY_CHAR_BUDGET}-character budget the agent prompt allows per tool result; check returned_rows/truncated.")] = 20,
+) -> str:
+    """Read individual rows out of a CSV, with filtering, sorting and per-group summaries.
+
+    Use this — not csv_stats — whenever you need concrete values rather than
+    aggregates: which timestamps are anomalous, which sensor (KPI) they belong
+    to, how severe each one is. csv_stats drops non-numeric columns such as
+    timestamp, KPI and anomaly_label, so it cannot answer those questions.
+    """
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as exc:
+        return json.dumps({"error": f"Cannot read CSV '{csv_path}': {exc}"})
+
+    total_rows = int(len(df))
+    try:
+        for spec in filters or []:
+            df = _apply_filter(df, spec)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+
+    matched_rows = int(len(df))
+    limit = max(1, min(int(limit), _CSV_QUERY_ROW_CAP))
+
+    if group_by:
+        missing = [c for c in group_by if c not in df.columns]
+        if missing:
+            return json.dumps({"error": f"Unknown group_by columns: {missing}. Available: {list(df.columns)}"})
+        # A summary is deliberately lean: with 10 KPIs per chiller, carrying
+        # min/max/mean for every numeric column plus a whole top row costs ~500
+        # bytes per group, so only two groups survived the output budget and the
+        # caller saw 2 of 10 sensors. Keep what a per-group overview is actually
+        # read for; the caller can drop group_by to inspect individual rows.
+        measure = sort_by if (sort_by and sort_by in df.columns
+                              and pd.api.types.is_numeric_dtype(df[sort_by])) else None
+        label_cols = [c for c in ("timestamp", "time", "datetime") if c in df.columns]
+        groups = []
+        for key, chunk in df.groupby(group_by, dropna=False):
+            key_tuple = key if isinstance(key, tuple) else (key,)
+            entry = {
+                "key": {c: (None if pd.isna(v) else str(v)) for c, v in zip(group_by, key_tuple)},
+                "count": int(len(chunk)),
+            }
+            if measure:
+                series = chunk[measure].dropna()
+                if not series.empty:
+                    entry[measure] = {
+                        "max": round(float(series.max()), 4),
+                        "mean": round(float(series.mean()), 4),
+                    }
+                ordered = chunk.sort_values(measure, ascending=not descending)
+                if label_cols and len(ordered):
+                    entry["peak_at"] = str(ordered.iloc[0][label_cols[0]])
+            groups.append(entry)
+        groups.sort(key=lambda g: g["count"], reverse=True)
+        kept = groups[:limit]
+        payload = {
+            "csv_path": csv_path, "all_columns": list(pd.read_csv(csv_path, nrows=0).columns),
+            "total_rows": total_rows, "matched_rows": matched_rows,
+            "group_by": group_by, "total_groups": len(groups), "groups": kept,
+        }
+        return _fit_to_budget(payload, "groups", len(groups))
+
+    if sort_by:
+        if sort_by not in df.columns:
+            return json.dumps({"error": f"Unknown sort_by column '{sort_by}'. Available: {list(df.columns)}"})
+        df = df.sort_values(sort_by, ascending=not descending)
+
+    if columns:
+        missing = [c for c in columns if c not in df.columns]
+        if missing:
+            return json.dumps({"error": f"Unknown columns: {missing}. Available: {list(df.columns)}"})
+        df = df[columns]
+
+    rows = json.loads(df.head(limit).to_json(orient="records", date_format="iso"))
+    payload = {
+        "csv_path": csv_path,
+        "all_columns": list(pd.read_csv(csv_path, nrows=0).columns),
+        "total_rows": total_rows,
+        "matched_rows": matched_rows,
+        "rows": rows,
+    }
+    return _fit_to_budget(payload, "rows", matched_rows)
+
+
 def main():
     # Initialize and run the server
     mcp.run(transport="stdio")
