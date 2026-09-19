@@ -504,7 +504,7 @@ Flags:
 | `--reuse-mode {full,none,stateless}` | Cross-turn evidence reuse policy; defaults to `SS_REUSE_MODE` or `full`. |
 | `--no-artifact-reuse` | Alias for `--reuse-mode none`. |
 | `--max-repeat-dispatch N` | Maximum consecutive dispatches to one specialist; defaults to `SS_MAX_REPEAT_DISPATCH` or `0` (disabled). |
-| `--parallel` | Enable parallel Specialist tool batches and deterministic multi-asset coverage guards. |
+| `--parallel` | Enable parallel Specialist tool batches. |
 | `--no-stream` | Suppress streaming event output on stderr. |
 | `--no-log` | Suppress persistent behavior logs under `logs/supervisor_specialist/`. |
 
@@ -583,7 +583,7 @@ The MCP client executes independent calls concurrently with `asyncio` and preser
 SUPERVISOR_SPECIALIST_PARALLELISM=2 uv run supervisor-specialist --parallel "..."
 ```
 
-Parallel mode also enables deterministic multi-asset coverage guards. If asset discovery finds multiple chillers and later artifacts expose multiple CSV paths, the data-collection and time-series Specialists ensure each known asset receives the expected collection/statistics/TSFM coverage instead of silently narrowing to one asset.
+In parallel mode, the LLM selects the tool calls, assets, CSV inputs, and analysis parameters. The runtime executes independent calls concurrently and records their batch metadata.
 
 ### Behavior logs
 

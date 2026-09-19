@@ -341,3 +341,51 @@ async def test_reuse_modes_work_with_parallel_execution(tmp_path, parallel, reus
     memory = runner.last_dialog_state["conversation_memory"]
     assert memory.active_artifact_ids == (["artifact_dc_001"] if reuse_mode == "full" else [])
     assert len(memory.recent_turns) == (1 if reuse_mode == "stateless" else 2)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("parallel", [False, True])
+@pytest.mark.parametrize("selected_artifacts", [[], ["artifact_dc_001"]])
+async def test_specialist_receives_only_supervisor_selected_artifacts(
+    tmp_path, parallel, selected_artifacts,
+):
+    class SelectiveLLM(FakeLLM):
+        def _artifact_response(self, prompt):
+            response = json.loads(super()._artifact_response(prompt))
+            if "Data Collection Specialist" in prompt:
+                response["artifacts"].append({
+                    **response["artifacts"][0],
+                    "payload": {"note": "Unselected evidence"},
+                })
+            return json.dumps(response)
+
+        def _supervisor_decision(self, prompt):
+            response = json.loads(super()._supervisor_decision(prompt))
+            if response["next_node"] == "failure_reasoning_specialist":
+                response["next_task"]["input_artifacts"] = selected_artifacts
+            return json.dumps(response)
+
+    runner = SupervisorSpecialistRunner(
+        llm=SelectiveLLM(), mcp_tools=FakeMCPToolClient(), quiet=True,
+        log_dir=tmp_path, reference_date="2020-06-20", max_steps=5,
+        parallel=parallel,
+    )
+    await runner.run_turn(
+        "The temperature of our chiller at Site MAIN seems unusually high lately."
+    )
+    assert runner.last_dialog_state["case_state"].artifact_ids == [
+        "artifact_dc_001", "artifact_dc_002",
+    ]
+    await runner.run_turn("What could be causing this during the same period?")
+    records = [
+        json.loads(line)
+        for line in next(tmp_path.glob("*.jsonl")).read_text().splitlines()
+    ]
+    specialist_records = [
+        record for record in records
+        if record["agent_role"] == "failure_reasoning_specialist"
+    ]
+    assert len(specialist_records) == 1
+    assert specialist_records[0]["status"] == "ok"
+    assert specialist_records[0]["input_artifact_ids"] == selected_artifacts
+    assert specialist_records[0]["task"]["input_artifacts"] == selected_artifacts

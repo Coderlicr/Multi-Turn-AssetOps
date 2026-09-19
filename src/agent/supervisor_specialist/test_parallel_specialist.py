@@ -40,15 +40,17 @@ def existing_csv_inputs(tmp_path, monkeypatch):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("parallel", [False, True])
-async def test_finetuning_guard_and_result_normalization_with_parallel(tmp_path, parallel):
+@pytest.mark.parametrize("execute_finetuning", [False, True])
+async def test_finetuning_respects_done_and_normalizes_actual_results(
+    tmp_path, parallel, execute_finetuning,
+):
     class FinetuningLLM:
         steps = 0
 
         def generate(self, prompt, temperature=0.0):
             if "Decide the NEXT action." in prompt:
                 self.steps += 1
-                if self.steps == 2:
-                    assert "Fine-tuning task is not complete" in prompt
+                if self.steps == 1 and execute_finetuning:
                     return json.dumps({"tool_name": "tsfm.run_tsfm_finetuning", "args": {"dataset_path": _csv_path(6)}})
                 return json.dumps({"done": True})
             return json.dumps({"artifacts": [{"artifact_type": "analysis_result", "asset_ids": ["Chiller 6"], "payload": {}}]})
@@ -77,13 +79,22 @@ async def test_finetuning_guard_and_result_normalization_with_parallel(tmp_path,
         focus_metrics=[], input_artifacts=["artifact_dc_001"],
     )
     result = await specialist.run(task)
-    assert result.tool_calls[0].tool_name == "internal.done_guard"
-    assert result.tool_calls[1].status == "ok"
-    assert result.artifacts[0].payload == {
-        "task_completed": True, "operation": "fine_tuning",
-        "checkpoint_path": "/tmp/trained_checkpoint", "model_checkpoint": "/tmp/trained_checkpoint",
-        "metrics_file": "/tmp/metrics.csv", "results_file": "/tmp/metrics.csv",
-    }
+    assert specialist.llm.steps == (2 if execute_finetuning else 1)
+    assert all(call.tool_name != "internal.done_guard" for call in result.tool_calls)
+    finetuning_calls = [
+        call for call in result.tool_calls
+        if call.tool_name == "tsfm.run_tsfm_finetuning"
+    ]
+    assert len(finetuning_calls) == int(execute_finetuning)
+    if execute_finetuning:
+        assert finetuning_calls[0].status == "ok"
+        assert result.artifacts[0].payload == {
+            "task_completed": True, "operation": "fine_tuning",
+            "checkpoint_path": "/tmp/trained_checkpoint", "model_checkpoint": "/tmp/trained_checkpoint",
+            "metrics_file": "/tmp/metrics.csv", "results_file": "/tmp/metrics.csv",
+        }
+    else:
+        assert result.artifacts[0].payload == {}
 
 
 @pytest.mark.anyio
@@ -115,7 +126,7 @@ async def test_parallel_batch_validates_each_file_argument(tmp_path):
 @pytest.mark.parametrize("parallel", [False, True])
 def test_dataset_paths_normalized_in_both_execution_modes(tmp_path, parallel):
     specialist = DataCollectionSpecialist(
-        llm=DoneLLM(), mcp_tools=CoverageMCPToolClient(), artifact_store=ArtifactStore(),
+        llm=DoneLLM(), mcp_tools=MultiAssetMCPToolClient(), artifact_store=ArtifactStore(),
         behavior_log=BehaviorLog(log_dir=tmp_path), event_stream=EventStream(quiet=True),
         enable_parallel=parallel,
     )
@@ -131,8 +142,7 @@ def test_dataset_paths_normalized_in_both_execution_modes(tmp_path, parallel):
     results = [ToolCallResult(order=1, tool_name="iot.history_csv", args={"asset_id": "Chiller 6"}, status="ok", result=json.dumps({"csv_path": _csv_path(6)}))]
     normalized = specialist._postprocess_artifacts(task, [], results, [artifact])
     assert normalized[0].payload["csv_path"] == _csv_path(6)
-    if parallel:
-        assert normalized[0].payload["datasets_by_asset"]["Chiller 6"]["csv_path"] == _csv_path(6)
+    assert normalized[0].payload == {"csv_path": _csv_path(6)}
 
 
 class ParallelMCPToolClient(MCPToolClient):
@@ -220,6 +230,8 @@ class DuplicateRetryLLM:
         del temperature
         if "Decide the NEXT action." in prompt:
             self.react_count += 1
+            if self.react_count > 2:
+                return json.dumps({"done": True})
             assets = [3, 4, 6, 9] if self.react_count == 1 else [3, 6, 9]
             return json.dumps(
                 {
@@ -254,7 +266,7 @@ class DuplicateRetryLLM:
         raise AssertionError(f"Unexpected prompt: {prompt[:200]}")
 
 
-class DataCoverageLLM:
+class PartialDataLLM:
     def __init__(self) -> None:
         self.react_count = 0
 
@@ -366,7 +378,7 @@ class BatchMCPToolClient:
             self.active -= 1
 
 
-class CoverageMCPToolClient:
+class MultiAssetMCPToolClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict]] = []
 
@@ -556,7 +568,8 @@ async def test_parallel_disabled_runs_only_one_tool_call_from_batch(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_duplicate_successful_batch_members_are_skipped_not_logged_as_failures(tmp_path):
+@pytest.mark.parametrize("parallel", [False, True])
+async def test_successful_tool_calls_run_again_when_requested(tmp_path, parallel):
     llm = DuplicateRetryLLM()
     mcp_tools = BatchMCPToolClient(delay=0.01)
     specialist = TimeSeriesAnalysisSpecialist(
@@ -565,7 +578,7 @@ async def test_duplicate_successful_batch_members_are_skipped_not_logged_as_fail
         artifact_store=ArtifactStore(),
         behavior_log=BehaviorLog(log_dir=tmp_path),
         event_stream=EventStream(quiet=True),
-        enable_parallel=True,
+        enable_parallel=parallel,
     )
     task = TaskEnvelope(
         case_id="case_duplicate_retry",
@@ -581,35 +594,31 @@ async def test_duplicate_successful_batch_members_are_skipped_not_logged_as_fail
 
     result = await specialist.run(task)
 
-    assert llm.react_count == 2
-    assert [call[1]["dataset_path"] for call in mcp_tools.calls] == [
-        _csv_path(3),
-        _csv_path(4),
-        _csv_path(6),
-        _csv_path(9),
+    expected_assets = [3, 4, 6, 9, 3, 6, 9] if parallel else [3, 3]
+    expected_statuses = ["ok", "failed", "ok", "ok", "ok", "ok", "ok"] if parallel else ["ok", "ok"]
+    assert llm.react_count == 3
+    assert [args["dataset_path"] for _, args in mcp_tools.calls] == [
+        _csv_path(asset) for asset in expected_assets
     ]
-    assert len(result.tool_calls) == 4
-    assert [call.status for call in result.tool_calls] == ["ok", "failed", "ok", "ok"]
-    assert "Duplicate successful tool call blocked" not in llm.artifact_prompt
-
+    assert [call.status for call in result.tool_calls] == expected_statuses
     records = [
         json.loads(line)
-        for line in (tmp_path / "case_duplicate_retry.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (tmp_path / "case_duplicate_retry.jsonl").read_text().splitlines()
     ]
-    assert len(records[0]["tool_calls"]) == 4
-    assert "Duplicate successful tool call blocked" not in json.dumps(records[0]["tool_calls"])
+    assert len(records[0]["tool_calls"]) == len(expected_assets)
 
 
 @pytest.mark.anyio
-async def test_data_collection_completes_history_csv_for_all_discovered_assets(tmp_path):
-    mcp_tools = CoverageMCPToolClient()
+@pytest.mark.parametrize("parallel", [False, True])
+async def test_data_collection_does_not_collect_assets_omitted_by_llm(tmp_path, parallel):
+    mcp_tools = MultiAssetMCPToolClient()
     specialist = DataCollectionSpecialist(
-        llm=DataCoverageLLM(),
+        llm=PartialDataLLM(),
         mcp_tools=mcp_tools,
         artifact_store=ArtifactStore(),
         behavior_log=BehaviorLog(log_dir=tmp_path),
         event_stream=EventStream(quiet=True),
-        enable_parallel=True,
+        enable_parallel=parallel,
     )
     task = TaskEnvelope(
         case_id="case_data_coverage",
@@ -629,19 +638,19 @@ async def test_data_collection_completes_history_csv_for_all_discovered_assets(t
         for tool_name, args in mcp_tools.calls
         if tool_name == "iot.history_csv"
     ]
-    assert history_assets == ["Chiller 6", "Chiller 3", "Chiller 4", "Chiller 9"]
-    dataset_artifact = result.artifacts[0]
-    assert set(dataset_artifact.asset_ids) == {"Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"}
-    assert set(dataset_artifact.payload["datasets_by_asset"]) == {
-        "Chiller 3",
-        "Chiller 4",
-        "Chiller 6",
-        "Chiller 9",
-    }
+    assert history_assets == (["Chiller 6"] if parallel else [])
+    assert [tool_name for tool_name, _ in mcp_tools.calls] == (
+        ["iot.assets", "iot.history_csv"] if parallel else ["iot.assets"]
+    )
+    assert specialist.llm.react_count == 2
+    assert result.artifacts[0].asset_ids == ["Chiller 6"]
+    assert "datasets_by_asset" not in result.artifacts[0].payload
+    assert "asset_count" not in result.artifacts[0].payload
 
 
 @pytest.mark.anyio
-async def test_time_series_completes_tsfm_for_all_dataset_artifact_csvs(tmp_path):
+@pytest.mark.parametrize("parallel", [False, True])
+async def test_time_series_does_not_analyze_csvs_after_llm_is_done(tmp_path, parallel):
     artifact_store = ArtifactStore()
     artifact_store.save_many(
         [
@@ -669,14 +678,14 @@ async def test_time_series_completes_tsfm_for_all_dataset_artifact_csvs(tmp_path
             )
         ]
     )
-    mcp_tools = CoverageMCPToolClient()
+    mcp_tools = MultiAssetMCPToolClient()
     specialist = TimeSeriesAnalysisSpecialist(
         llm=DoneLLM(),
         mcp_tools=mcp_tools,
         artifact_store=artifact_store,
         behavior_log=BehaviorLog(log_dir=tmp_path),
         event_stream=EventStream(quiet=True),
-        enable_parallel=True,
+        enable_parallel=parallel,
     )
     task = TaskEnvelope(
         case_id="case_ts_coverage",
@@ -691,18 +700,48 @@ async def test_time_series_completes_tsfm_for_all_dataset_artifact_csvs(tmp_path
 
     result = await specialist.run(task)
 
-    tsfm_paths = [
-        args["dataset_path"]
-        for tool_name, args in mcp_tools.calls
-        if tool_name == "tsfm.run_integrated_tsad"
-    ]
-    assert len(tsfm_paths) == 4
-    assert all(f"Chiller_{n}" in " ".join(tsfm_paths) for n in [3, 4, 6, 9])
-    analysis_artifact = result.artifacts[0]
-    assert set(analysis_artifact.asset_ids) == {"Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"}
-    assert set(analysis_artifact.payload["analysis_by_asset"]) == {
-        "Chiller 3",
-        "Chiller 4",
-        "Chiller 6",
-        "Chiller 9",
-    }
+    assert mcp_tools.calls == []
+    assert result.tool_calls == []
+    assert len(result.artifacts) == 1
+    assert result.artifacts[0].asset_ids == ["Chiller 6"]
+    assert result.artifacts[0].payload == {"note": "LLM only mentioned Chiller 6."}
+
+
+@pytest.mark.parametrize("parallel", [False, True])
+@pytest.mark.parametrize("artifact_present", [False, True])
+@pytest.mark.parametrize("specialist_cls,tool_name,artifact_type", [
+    (DataCollectionSpecialist, "iot.history_csv", "dataset_ref"),
+    (TimeSeriesAnalysisSpecialist, "tsfm.run_integrated_tsad", "analysis_result"),
+])
+def test_postprocessing_does_not_add_coverage_or_create_artifacts(
+    tmp_path, parallel, artifact_present, specialist_cls, tool_name, artifact_type,
+):
+    specialist = specialist_cls(
+        llm=DoneLLM(), mcp_tools=MultiAssetMCPToolClient(), artifact_store=ArtifactStore(),
+        behavior_log=BehaviorLog(log_dir=tmp_path), event_stream=EventStream(quiet=True),
+        enable_parallel=parallel,
+    )
+    task = TaskEnvelope(
+        case_id="case_artifact_selection", task_type="analysis", goal="Analyze data",
+        site="MAIN", asset_ids=[], time_window=TimeWindow(), focus_metrics=[],
+        input_artifacts=[],
+    )
+    artifact = ArtifactEnvelope(
+        artifact_id="artifact_selected", case_id=task.case_id, producer=specialist.role,
+        artifact_type=artifact_type, asset_ids=["Chiller 6"], time_window=TimeWindow(),
+        source_tools=[], source_artifacts=[], payload={"note": "LLM selected this result"},
+    )
+    result = ToolCallResult(
+        order=1, tool_name=tool_name,
+        args={"asset_id": "Chiller 3", "dataset_path": _csv_path(3)}, status="ok",
+        result=json.dumps({"csv_path": _csv_path(3), "results_file": "/tmp/analysis.csv"}),
+    )
+    artifacts = specialist._postprocess_artifacts(
+        task, [], [result], [artifact] if artifact_present else [],
+    )
+    assert len(artifacts) == int(artifact_present)
+    if artifact_present:
+        assert artifacts[0].artifact_id == artifact.artifact_id
+        assert artifacts[0].asset_ids == ["Chiller 6"]
+        assert artifacts[0].payload["note"] == "LLM selected this result"
+        assert not {"datasets_by_asset", "asset_count", "analysis_by_asset", "aggregate_summary", "coverage_summary"} & artifacts[0].payload.keys()

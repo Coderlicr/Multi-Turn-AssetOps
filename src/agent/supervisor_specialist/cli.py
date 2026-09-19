@@ -73,10 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--parallel",
         action="store_true",
-        help=(
-            "Enable parallel specialist tool batches and deterministic multi-asset "
-            "coverage guards."
-        ),
+        help="Enable parallel specialist tool batches.",
     )
     p.add_argument(
         "--reuse-mode",

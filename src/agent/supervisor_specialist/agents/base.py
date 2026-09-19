@@ -19,7 +19,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import uuid
 from abc import ABC
 from pathlib import Path
@@ -55,7 +54,6 @@ _log = logging.getLogger(__name__)
 
 _MAX_TOOL_CALLS_PER_SPECIALIST = 20
 _MAX_PARALLEL_TOOL_CALLS_PER_SPECIALIST = 4
-_ASSET_FROM_PATH_RE = re.compile(r"Chiller[_\s]+(\d+)", re.IGNORECASE)
 
 
 def _max_parallel_tool_calls() -> int:
@@ -257,29 +255,6 @@ def _summarize_tool_calls(results: list[ToolCallResult]) -> list[ToolCallSummary
     return summaries
 
 
-def _parse_tool_json(value) -> dict:
-    if isinstance(value, dict):
-        return value
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, dict) else {}
-        except json.JSONDecodeError:
-            return {}
-    return {}
-
-
-def _asset_from_path(path: str) -> str | None:
-    match = _ASSET_FROM_PATH_RE.search(path.replace("-", "_"))
-    if not match:
-        return None
-    return f"Chiller {match.group(1)}"
-
-
-def _unique(values: list[str]) -> list[str]:
-    return list(dict.fromkeys(v for v in values if v))
-
-
 # ── Base class ────────────────────────────────────────────────────────────────
 
 class SpecialistAgent(ABC):
@@ -324,8 +299,6 @@ class SpecialistAgent(ABC):
 
         # ReAct loop: interleave LLM decisions with tool execution
         results = await self._run_react_loop(task, input_artifacts, tool_schemas)
-        if self.enable_parallel:
-            results = await self._postprocess_tool_results(task, input_artifacts, results)
 
         # Artifact generation: LLM synthesizes all tool results into artifacts
         final = await self._call_llm_for_artifacts(task, input_artifacts, results)
@@ -397,15 +370,6 @@ class SpecialistAgent(ABC):
             tool_calls=_summarize_tool_calls(results),
         )
 
-    async def _postprocess_tool_results(
-        self,
-        task: TaskEnvelope,
-        input_artifacts: list[ArtifactEnvelope],
-        results: list[ToolCallResult],
-    ) -> list[ToolCallResult]:
-        """Subclass hook for deterministic coverage checks after the LLM loop."""
-        return results
-
     def _postprocess_artifacts(
         self,
         task: TaskEnvelope,
@@ -472,16 +436,6 @@ class SpecialistAgent(ABC):
                 break
 
             if decision.done:
-                done_blocker = self._done_blocking_message(task, input_artifacts, results)
-                if done_blocker:
-                    results.append(ToolCallResult(
-                        order=step_num,
-                        tool_name="internal.done_guard",
-                        args={},
-                        status="failed",
-                        error=done_blocker,
-                    ))
-                    continue
                 _log.debug("%s: ReAct loop done after %d call(s).", self.role, len(results))
                 break
 
@@ -564,26 +518,8 @@ class SpecialistAgent(ABC):
                     )
                     continue
 
-                if self._already_succeeded(request, results):
-                    _log.info(
-                        "%s: duplicate successful tool call skipped: %s",
-                        self.role,
-                        tool_name,
-                    )
-                    continue
-
                 seen_batch_keys.add(call_key)
                 executable.append((position, request))
-
-            if not executable and not synthetic_results:
-                self.event_stream.emit(
-                    case_id=task.case_id,
-                    agent_role=self.role,
-                    task_type=task.task_type,
-                    status="completed",
-                    message="All requested tool calls already succeeded; stopping loop.",
-                )
-                break
 
             if executable:
                 if len(executable) == 1:
@@ -673,19 +609,6 @@ class SpecialistAgent(ABC):
             return [ToolCallRequest(tool_name=decision.tool_name, args=decision.args or {})]
         return []
 
-    def _already_succeeded(
-        self,
-        request: ToolCallRequest,
-        prior_results: list[ToolCallResult],
-    ) -> bool:
-        call_key = self._tool_call_key(request)
-        return any(
-            result.status == "ok"
-            and self._tool_call_key(ToolCallRequest(tool_name=result.tool_name, args=result.args))
-            == call_key
-            for result in prior_results
-        )
-
     def _tool_call_key(self, request: ToolCallRequest) -> str:
         return f"{request.tool_name}:{json.dumps(request.args or {}, sort_keys=True, default=str)}"
 
@@ -720,77 +643,6 @@ class SpecialistAgent(ABC):
                     return MCPToolResult(status="failed", error=str(exc) or repr(exc))
 
         return await asyncio.gather(*(_call_one(request) for request in requests))
-
-    async def _execute_coverage_calls(
-        self,
-        task: TaskEnvelope,
-        existing_results: list[ToolCallResult],
-        requests: list[ToolCallRequest],
-        *,
-        message: str,
-    ) -> list[ToolCallResult]:
-        """Execute deterministic coverage calls, skipping calls that already succeeded."""
-        if not self.enable_parallel:
-            return []
-
-        executable: list[ToolCallRequest] = []
-        seen: set[str] = set()
-        for request in requests:
-            if request.tool_name not in self.allowed_tools:
-                continue
-            key = self._tool_call_key(request)
-            if key in seen or self._already_succeeded(request, existing_results):
-                continue
-            seen.add(key)
-            executable.append(request)
-
-        if not executable:
-            return []
-
-        max_parallel = _max_parallel_tool_calls()
-        parallel_group_id = f"pg_{uuid.uuid4().hex[:8]}" if len(executable) > 1 else None
-        self.event_stream.emit(
-            case_id=task.case_id,
-            agent_role=self.role,
-            task_type=task.task_type,
-            status="running",
-            message=message,
-        )
-
-        mcp_results = await self._execute_tool_calls(executable, max_parallel=max_parallel)
-        new_results: list[ToolCallResult] = []
-        for index, (request, mcp_result) in enumerate(zip(executable, mcp_results, strict=True), start=1):
-            result = ToolCallResult(
-                order=len(existing_results) + len(new_results) + 1,
-                tool_name=request.tool_name,
-                args=request.args or {},
-                status=mcp_result.status,
-                result=mcp_result.result,
-                error=mcp_result.error,
-                parallel_group_id=parallel_group_id,
-                parallel_index=index if parallel_group_id else None,
-                parallel_size=len(executable) if parallel_group_id else None,
-            )
-            new_results.append(result)
-            self.event_stream.emit(
-                case_id=task.case_id,
-                agent_role=self.role,
-                task_type=task.task_type,
-                status="completed" if result.status == "ok" else "failed",
-                message=(
-                    f"{request.tool_name} succeeded"
-                    if result.status == "ok"
-                    else f"{request.tool_name} failed: {result.error}"
-                ),
-            )
-        return new_results
-    def _done_blocking_message(
-        self,
-        task: TaskEnvelope,
-        input_artifacts: list[ArtifactEnvelope],
-        results: list[ToolCallResult],
-    ) -> str | None:
-        return None
 
     @staticmethod
     def _artifact_time_window(task: TaskEnvelope, draft: ArtifactDraft) -> TimeWindow:

@@ -282,9 +282,6 @@ def build_graph(deps: Dependencies, checkpointer=None):
             try:
                 task = task.model_copy(
                     update={
-                        "input_artifacts": _unique(
-                            task.input_artifacts + state["case_state"].artifact_ids
-                        ),
                         "constraints": {
                             **task.constraints,
                             "turn_id": _turn_id(state),
