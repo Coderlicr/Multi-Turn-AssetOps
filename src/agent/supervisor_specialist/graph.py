@@ -289,6 +289,29 @@ def build_graph(deps: Dependencies, checkpointer=None):
                     }
                 )
                 result = await specialist.run(task)
+
+                if result.outcome == "cannot_fulfill":
+                    # Tell the supervisor so it stops re-sending this task. Without
+                    # this the specialist would have had to invent a successful
+                    # artifact, which is what drove the dispatch loops.
+                    deps.supervisor.record_unmet(
+                        turn_key=f"{state['case_state'].case_id}:{_turn_id(state)}",
+                        role=specialist.role,
+                        goal=task.goal,
+                        reason=result.unmet_reason or "(no reason given)",
+                    )
+                    return {
+                        **state,
+                        "last_artifacts": [],
+                        "turn_tool_calls": state.get("turn_tool_calls", []) + result.tool_calls,
+                        "current_task": None,
+                        "next_node": "supervisor",
+                        "error_message": (
+                            f"{specialist.role} cannot fulfil this task: "
+                            f"{result.unmet_reason or '(no reason given)'}"
+                        ),
+                    }
+
                 artifacts = result.artifacts
                 deps.artifact_store.save_many(artifacts)
 

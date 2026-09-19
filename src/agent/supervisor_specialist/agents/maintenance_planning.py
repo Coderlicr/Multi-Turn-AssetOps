@@ -23,6 +23,17 @@ class MaintenancePlanningSpecialist(SpecialistAgent):
         "- The summary must directly state the recommended recovery or verification plan, "
         "not only report events, alerts, work orders, or sensor statistics"
     )
+    capability_summary = (
+        "Work-order domain: retrieve work orders/events/alert rules, compute work-order "
+        "distribution, predict the next work order, analyse alert-to-failure probability, and "
+        "recommend actions grounded in those retrieved records"
+    )
+    cannot_do = (
+        "run any time-series model or compute anomalies (no tsfm tools) - pass anomaly findings "
+        "in as input artifacts instead of asking it to analyse sensor data",
+        "retrieve sensor inventory or history (no iot tools)",
+        "diagnose failure modes from sensor patterns (no fmsr tools)",
+    )
     allowed_tools = {
         "wo.get_work_orders",
         "wo.get_preventive_work_orders",

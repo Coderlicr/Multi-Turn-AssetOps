@@ -14,6 +14,11 @@ from agent.supervisor_specialist._utils import (
     format_conversation_memory,
     parse_json_from_llm,
 )
+from agent.supervisor_specialist.agents.base import format_specialist_catalog
+from agent.supervisor_specialist.agents.data_collection import DataCollectionSpecialist
+from agent.supervisor_specialist.agents.failure_reasoning import FailureReasoningSpecialist
+from agent.supervisor_specialist.agents.maintenance_planning import MaintenancePlanningSpecialist
+from agent.supervisor_specialist.agents.time_series_analysis import TimeSeriesAnalysisSpecialist
 from agent.supervisor_specialist.runtime.artifact_store import ArtifactStore
 from agent.supervisor_specialist.runtime.behavior_log import BehaviorLog
 from agent.supervisor_specialist.runtime.event_stream import EventStream
@@ -34,11 +39,12 @@ Today (UTC): {today}
 Latest user message:
 {current_user_message}
 
-Available specialists:
-- data_collection_specialist: Collects IoT sensor data, work orders, events, alert rules, asset/sensor inventory
-- time_series_analysis_specialist: Performs trend analysis, forecasting, and anomaly detection on time-series data
-- failure_reasoning_specialist: Maps sensor anomaly patterns to failure modes and produces root cause hypotheses
-- maintenance_planning_specialist: Generates maintenance plans, work order recommendations, and action drafts
+Available specialists (TOOLS is the complete set each one can reach; never ask for
+anything under CANNOT — that specialist has no tool for it and will come back empty):
+{specialist_catalog}
+
+Specialists that already reported they cannot do a task this turn:
+{unmet_reports}
 
 Current case state:
 {case_state_json}
@@ -75,6 +81,12 @@ Decision rules:
 - If the latest user question can be answered from conversation memory and existing artifacts, go directly to respond_to_user
 - Go to respond_to_user when the user's goal is answered or when step_count >= {steps_before_respond}
 - Do NOT call the same specialist for the exact same purpose twice
+- If a specialist reported it cannot fulfil a task, do NOT send it the same task again.
+  Either route the missing piece to a specialist whose TOOLS cover it, or go to
+  respond_to_user and answer with the evidence already collected
+- Check the requested work against that specialist's TOOLS before dispatching. If no
+  specialist owns a tool for it, the work cannot be produced by dispatch at all —
+  go to respond_to_user and reason over the existing artifacts instead
 - When calling a specialist, include all relevant artifact IDs in input_artifacts
 - Artifact IDs such as "artifact_dc_001" are references, not file paths; specialists must use concrete file paths from artifact payloads such as csv_path
 - If the user does not name a specific asset, write the goal to explicitly cover ALL assets at the site (e.g. "all chillers at site MAIN") and leave asset_ids as [] so the specialist discovers them via iot.assets
@@ -107,6 +119,39 @@ Note: set next_task to null (JSON null) if next_node is "respond_to_user".
 All input_artifacts IDs must be from the already collected artifacts list above.
 
 JSON:"""
+
+
+#: Rendered from the specialist classes so the supervisor sees the real tool lists.
+_SPECIALIST_CATALOG = format_specialist_catalog([
+    DataCollectionSpecialist,
+    TimeSeriesAnalysisSpecialist,
+    FailureReasoningSpecialist,
+    MaintenancePlanningSpecialist,
+])
+
+
+def _goal_signature(goal: str) -> frozenset[str]:
+    """Bag of meaningful words, for judging whether two goals ask the same thing."""
+    stop = {"the", "a", "an", "for", "and", "to", "of", "in", "on", "at", "by", "with",
+            "using", "from", "is", "are", "be", "any", "all", "this", "that", "site"}
+    words = {w.strip(".,;:()[]\"'").lower() for w in goal.split()}
+    return frozenset(w for w in words if w and w not in stop and not w.isdigit())
+
+
+def _goals_match(a: str, b: str, threshold: float = 0.6) -> bool:
+    """Whether two goals are the same ask reworded.
+
+    Uses the overlap coefficient rather than Jaccard: a rephrasing often adds
+    qualifiers ("using historical sensor data"), which inflates the union and
+    would push a genuine repeat below a Jaccard threshold. Observed pair from the
+    logs — "Validate the causal links between anomalies for Chiller 3" vs
+    "Validate the causal links using historical sensor data for Chiller 3" —
+    scores 0.44 by Jaccard but 0.67 here.
+    """
+    sa, sb = _goal_signature(a), _goal_signature(b)
+    if len(sa) < 3 or len(sb) < 3:  # too short to judge; do not block on it
+        return False
+    return len(sa & sb) / min(len(sa), len(sb)) >= threshold
 
 
 _VALID_STATUSES = {
@@ -154,6 +199,23 @@ class SupervisorAgent:
         # the step budget and inflating tool-call and latency metrics.
         self._max_repeat_dispatch = max_repeat_dispatch
         self._dispatch_history: dict[str, list[str]] = {}
+        # (role, goal) pairs a specialist declared outside its tools, per turn.
+        self._unmet: dict[str, list[tuple[str, str, str]]] = {}
+
+    def record_unmet(self, turn_key: str, role: str, goal: str, reason: str) -> None:
+        """Remember that *role* reported it cannot do *goal* during this turn."""
+        entries = self._unmet.setdefault(turn_key, [])
+        if not any(r == role and g == goal for r, g, _ in entries):
+            entries.append((role, goal, reason))
+
+    def _format_unmet(self, turn_key: str) -> str:
+        entries = self._unmet.get(turn_key, [])
+        if not entries:
+            return "(none)"
+        return "\n".join(
+            f"- {role} cannot do: {goal}\n    reason: {reason}"
+            for role, goal, reason in entries
+        )
 
     async def decide(self, state: GraphState) -> GraphState:
         case_state: CaseState = state["case_state"]
@@ -203,8 +265,11 @@ class SupervisorAgent:
         ref = self._reference_date or datetime.now(timezone.utc)
         today = ref.strftime("%Y-%m-%dT%H:%M:%S")
 
+        turn_key = f"{case_state.case_id}:{_turn_id(state)}"
         prompt = _SUPERVISOR_PROMPT.format(
             today=today,
+            specialist_catalog=_SPECIALIST_CATALOG,
+            unmet_reports=self._format_unmet(turn_key),
             current_user_message=current_user_message,
             case_state_json=case_state.model_dump_json(indent=2),
             conversation_memory=format_conversation_memory(conversation_memory),
@@ -216,7 +281,6 @@ class SupervisorAgent:
             case_id=case_state.case_id,
         )
 
-        turn_key = f"{case_state.case_id}:{_turn_id(state)}"
         decision, validation_error = await self._call_and_validate(
             prompt, case_state, max_steps, turn_key
         )
@@ -328,6 +392,10 @@ class SupervisorAgent:
         if repeat_error:
             return repeat_error
 
+        unmet_error = self._check_unmet_dispatch(decision, turn_key)
+        if unmet_error:
+            return unmet_error
+
         if decision.case_status not in _VALID_STATUSES:
             return f"Invalid case_status: {decision.case_status}"
 
@@ -375,6 +443,22 @@ class SupervisorAgent:
                 "first to retrieve history_csv for the requested asset/time window."
             )
 
+        return None
+
+    def _check_unmet_dispatch(
+        self, decision: SupervisorDecision, turn_key: str
+    ) -> str | None:
+        """Refuse to re-send a task a specialist already declared out of reach."""
+        if decision.next_node == "respond_to_user" or decision.next_task is None:
+            return None
+        for role, goal, reason in self._unmet.get(turn_key, []):
+            if role == decision.next_node and _goals_match(goal, decision.next_task.goal):
+                return (
+                    f"{role} already reported it cannot do this task ({reason}). "
+                    f"Re-sending it will return nothing. Route the missing piece to a "
+                    f"specialist whose TOOLS cover it, or set next_node to "
+                    f"'respond_to_user' and answer from the evidence already collected."
+                )
         return None
 
     def _check_repeat_dispatch(

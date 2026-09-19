@@ -83,6 +83,9 @@ Option A — call one tool:
 Option B — you have enough data, stop:
 {{"done": true}}
 
+Option C — this task cannot be done with the tools listed above:
+{{"cannot_fulfill": true, "reason": "<one sentence: what was asked, and which capability you lack>"}}
+
 Critical rules:
 - If a prior tool returned a file path (e.g. csv_path in iot.history_csv result), use THAT EXACT PATH string in subsequent calls — never invent a path
 - Artifact IDs such as "artifact_dc_001" or "artifact_ts_001" are references only; NEVER pass an artifact ID as a file path argument to a tool
@@ -90,6 +93,11 @@ Critical rules:
 - tool_name must exactly match one of the listed tool names
 - Date/time args MUST be ISO 8601 strings, e.g. "2020-06-01T00:00:00" — never use expressions or function calls
 - Stop (done=true) once you have enough data to produce a meaningful artifact
+- Use cannot_fulfill when the task asks for something none of your tools produce (for
+  example a causal validation, a ranking, or a narrative plan when you only have
+  retrieval tools). Say so instead of returning the closest thing you can compute:
+  a wrong-but-successful-looking answer makes the supervisor ask you again
+- Never copy an input artifact's payload through as if it were your own result
 - Do NOT repeat a tool that already succeeded with the same arguments
 - If a tool has FAILED and you are about to call it again with essentially the same arguments, do NOT retry — output {{"done": true}} or try a completely different tool instead
 - When you receive a CSV file path (from any prior tool result or input artifact) and you are unsure of the column names, call utilities.csv_stats with ONLY the csv_path (omit the columns parameter) first — this returns all_columns so you know the exact column names before making further calls
@@ -153,6 +161,23 @@ JSON:"""
 
 # ── Helper ────────────────────────────────────────────────────────────────────
 
+def format_specialist_catalog(specialists: list[type["SpecialistAgent"]]) -> str:
+    """Render the supervisor-facing capability catalog.
+
+    The tool list is printed verbatim from allowed_tools so the supervisor sees
+    what a specialist can actually reach, rather than a hand-written blurb that
+    may promise more than the tools deliver.
+    """
+    blocks = []
+    for cls in specialists:
+        tools = ", ".join(sorted(cls.allowed_tools)) or "(none)"
+        block = [f"- {cls.role}", f"    CAN: {cls.capability_summary}", f"    TOOLS: {tools}"]
+        if cls.cannot_do:
+            block.append(f"    CANNOT: {'; '.join(cls.cannot_do)}")
+        blocks.append("\n".join(block))
+    return "\n".join(blocks)
+
+
 def _format_react_results(results: list[ToolCallResult]) -> str:
     """Format prior tool results for the ReAct step prompt.
 
@@ -209,6 +234,11 @@ class SpecialistAgent(ABC):
     role_prefix: str
     allowed_tools: set[str]
     allowed_artifact_types: tuple[str, ...]
+    #: One line on what this specialist can deliver, phrased in terms its tools support.
+    capability_summary: str = ""
+    #: Things this specialist must NOT be asked for, because no tool it owns can do them.
+    #: Kept next to allowed_tools so the two cannot drift apart unnoticed.
+    cannot_do: tuple[str, ...] = ()
     _extra_react_rules: str = ""  # Subclasses can override to inject role-specific rules
     _extra_artifact_rules: str = ""  # Subclasses can override to inject role-specific artifact rules
 
@@ -243,7 +273,13 @@ class SpecialistAgent(ABC):
         tool_schemas = await self.mcp_tools.get_allowed_tool_schemas(self.allowed_tools)
 
         # ReAct loop: interleave LLM decisions with tool execution
-        results = await self._run_react_loop(task, input_artifacts, tool_schemas)
+        results, unmet_reason = await self._run_react_loop(task, input_artifacts, tool_schemas)
+
+        if unmet_reason:
+            # Deliberately skip artifact generation. Asking for an artifact here is
+            # what produced the fake successes: the model copies an input payload,
+            # stamps task_completed=true, and the supervisor re-dispatches forever.
+            return self._unfulfilled_result(task, results, unmet_reason)
 
         # Artifact generation: LLM synthesizes all tool results into artifacts
         final = await self._call_llm_for_artifacts(task, input_artifacts, results)
@@ -312,13 +348,56 @@ class SpecialistAgent(ABC):
             tool_calls=_summarize_tool_calls(results),
         )
 
+    def _unfulfilled_result(
+        self,
+        task: TaskEnvelope,
+        results: list[ToolCallResult],
+        reason: str,
+    ) -> SpecialistResult:
+        """Report back that the task is outside this specialist's tools."""
+        self.logger.write(
+            case_id=task.case_id,
+            agent_role=self.role,
+            task_type=task.task_type,
+            input_artifact_ids=task.input_artifacts,
+            tool_calls=[
+                ToolCallLog(
+                    order=r.order, tool_name=r.tool_name, args=r.args,
+                    status=r.status, result=r.result, error=r.error,
+                )
+                for r in results
+            ],
+            output_artifact_ids=[],
+            status="cannot_fulfill",
+            turn_id=task.constraints.get("turn_id"),
+            task=task,
+            unmet_reason=reason,
+        )
+        self.event_stream.emit(
+            case_id=task.case_id,
+            agent_role=self.role,
+            task_type=task.task_type,
+            status="cannot_fulfill",
+            message=f"Cannot fulfill: {reason}",
+        )
+        return SpecialistResult(
+            artifacts=[],
+            tool_calls=_summarize_tool_calls(results),
+            outcome="cannot_fulfill",
+            unmet_reason=reason,
+        )
+
     async def _run_react_loop(
         self,
         task: TaskEnvelope,
         input_artifacts: list[ArtifactEnvelope],
         tool_schemas: list[dict],
-    ) -> list[ToolCallResult]:
-        """ReAct loop: LLM decides one tool at a time, sees each result before deciding next."""
+    ) -> tuple[list[ToolCallResult], str | None]:
+        """ReAct loop: LLM decides one tool at a time, sees each result before deciding next.
+
+        Returns the tool results and, when the specialist declared the task
+        outside its tools, the reason it gave.
+        """
         results: list[ToolCallResult] = []
 
         for call_num in range(1, _MAX_TOOL_CALLS_PER_SPECIALIST + 1):
@@ -345,6 +424,14 @@ class SpecialistAgent(ABC):
                     self.role, call_num,
                 )
                 break
+
+            # LLM declares the task outside its tool set
+            if parsed.get("cannot_fulfill"):
+                reason = str(parsed.get("reason") or "").strip() or (
+                    "Specialist reported the task cannot be fulfilled with its tools."
+                )
+                _log.info("%s: cannot fulfill task: %s", self.role, reason)
+                return results, reason
 
             # LLM signals it is done
             if parsed.get("done"):
@@ -453,7 +540,7 @@ class SpecialistAgent(ABC):
                     )
                     break
 
-        return results
+        return results, None
 
     def _done_blocking_message(
         self,

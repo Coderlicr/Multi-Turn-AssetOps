@@ -30,6 +30,17 @@ class FailureReasoningSpecialist(SpecialistAgent):
         "- The summary must state the conclusion directly, not only repeat anomaly counts "
         "or list tools used"
     )
+    capability_summary = (
+        "Relate sensors and failure modes using the FMSR knowledge base: list failure modes for "
+        "an asset, map failure modes to sensors, and form root-cause hypotheses over evidence "
+        "supplied in input artifacts"
+    )
+    cannot_do = (
+        "run any time-series model or compute anomalies (no tsfm tools)",
+        "retrieve sensor history (no iot.history/iot.history_csv) - pass it a dataset_ref artifact",
+        "statistically validate causality; its mapping is knowledge-based, not inferred from data",
+        "create or rank work orders (no wo tools)",
+    )
     allowed_tools = {
         "iot.sensors",
         "fmsr.get_failure_modes",

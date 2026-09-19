@@ -36,6 +36,16 @@ class TimeSeriesAnalysisSpecialist(SpecialistAgent):
         "or work-order distribution artifacts; those are maintenance_planning_specialist "
         "tasks, not sensor time-series tasks"
     )
+    capability_summary = (
+        "Run TSFM models over a CSV that already exists: anomaly detection, forecasting, "
+        "fine-tuning, model/task discovery, plus descriptive CSV statistics"
+    )
+    cannot_do = (
+        "retrieve sensor history itself (no iot tools) - it needs a dataset_ref artifact with a csv_path",
+        "establish or validate causal links between anomalies; it reports anomalies, not causes",
+        "map anomalies to failure modes (no fmsr tools)",
+        "produce work orders, maintenance plans or recommendations (no wo tools)",
+    )
     allowed_tools = {
         "tsfm.get_ai_tasks",
         "tsfm.get_tsfm_models",

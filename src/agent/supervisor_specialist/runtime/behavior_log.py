@@ -36,6 +36,7 @@ class BehaviorLog:
         output_artifacts: list[ArtifactEnvelope] | None = None,
         user_message: str | None = None,
         final_response: str | None = None,
+        unmet_reason: str | None = None,
     ) -> None:
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -59,6 +60,8 @@ class BehaviorLog:
             record["user_message"] = user_message
         if final_response is not None:
             record["final_response"] = final_response
+        if unmet_reason is not None:
+            record["unmet_reason"] = unmet_reason
         log_path = self._log_dir / f"{case_id}.jsonl"
         try:
             with open(log_path, "a", encoding="utf-8") as f:

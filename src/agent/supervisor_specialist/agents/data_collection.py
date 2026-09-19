@@ -21,6 +21,15 @@ class DataCollectionSpecialist(SpecialistAgent):
         "note any failed or unavailable sensor retrievals so downstream analysis can use "
         "the remaining available signals"
     )
+    capability_summary = (
+        "Retrieve raw facts: site/asset/sensor inventory, sensor history (incl. CSV export), "
+        "work orders, events, alert rules, and descriptive statistics over a CSV"
+    )
+    cannot_do = (
+        "run any time-series model (no tsfm tools): no anomaly detection, forecasting or fine-tuning",
+        "map anomalies to failure modes or produce root-cause hypotheses (no fmsr tools)",
+        "rank, recommend or schedule maintenance actions",
+    )
     allowed_tools = {
         "iot.sites",
         "iot.assets",
