@@ -1,17 +1,21 @@
 import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Annotated, List, Optional
-from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 import pendulum
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
 
 import os
+
+# The other five servers load .env at import. Without this, utilities only saw
+# the environment when it happened to be started by an agent that had already
+# loaded it -- running it standalone silently ignored .env.
+load_dotenv()
 
 # Setup logging — default WARNING so stderr stays quiet when used as MCP server;
 # set LOG_LEVEL=INFO (or DEBUG) in the environment to see verbose output.
@@ -33,16 +37,6 @@ class TimeEnglishResult(BaseModel):
 
 
 # --- Helper Functions ---
-
-
-def get_temp_filename() -> str:
-    filename = str(uuid4())
-
-    tmpdir_path = Path("/tmp/assetops/cbmdir")
-    tmpdir_path.mkdir(parents=True, exist_ok=True)
-
-    filepath = tmpdir_path / (filename + ".json")
-    return str(filepath)
 
 
 # --- JSON Tools ---

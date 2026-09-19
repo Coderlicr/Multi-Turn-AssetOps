@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional, Union
 from mcp.server.fastmcp import FastMCP
+
+from servers.paths import datasets_dir
 from pydantic import BaseModel, Field
 
 _DatetimeParam = Annotated[str, Field(description="ISO 8601 datetime string, e.g. '2020-06-01T00:00:00'.")]
@@ -306,9 +308,7 @@ def history_csv(
     safe_asset = asset_id.replace(" ", "_").replace("/", "-")
     safe_start = start.replace(":", "").replace("-", "")
     safe_final = (final or "now").replace(":", "").replace("-", "")
-    tmp_dir = Path("/tmp/assetops")
-    tmp_dir.mkdir(exist_ok=True)
-    csv_path = tmp_dir / f"{safe_asset}_{safe_start}_{safe_final}_history.csv"
+    csv_path = datasets_dir() / f"{safe_asset}_{safe_start}_{safe_final}_history.csv"
 
     try:
         with csv_path.open("w", newline="", encoding="utf-8") as f:

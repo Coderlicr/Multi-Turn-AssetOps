@@ -28,9 +28,7 @@ import logging
 import os
 import tempfile
 import uuid
-from pathlib import Path
 
-_TMP_BASE = Path("/tmp/assetops")
 from typing import Annotated, List, Optional, Union
 from pydantic import Field
 
@@ -77,6 +75,8 @@ from .io import (
     _read_ts_data,
     _write_json_to_temp,
 )
+from servers.paths import work_dir
+
 from .models import (
     _AI_TASKS,
     _TSFM_MODELS,
@@ -535,8 +535,7 @@ def run_tsad(
 
     try:
         df = _tsad_output_to_df(output)
-        _TMP_BASE.mkdir(exist_ok=True)
-        tmp_dir = tempfile.mkdtemp(dir=_TMP_BASE)
+        tmp_dir = tempfile.mkdtemp(dir=work_dir())
         csv_path = os.path.join(tmp_dir, f"tsad_output_{uuid.uuid4()}.csv")
         df.to_csv(csv_path, index=False)
         anomaly_count = (
@@ -735,7 +734,7 @@ def run_integrated_tsad(
             # Write quality-filtered data (which has the segment_id column added
             # by the quality filter) to a temp CSV.  Build a fresh config that
             # uses segment_id as the id column to match the forecasting output.
-            tsad_tmp = os.path.join(tempfile.mkdtemp(dir=_TMP_BASE), f"tsad_input_{uuid.uuid4()}.csv")
+            tsad_tmp = os.path.join(tempfile.mkdtemp(dir=work_dir()), f"tsad_input_{uuid.uuid4()}.csv")
             data_df_filtered.to_csv(tsad_tmp, index=False)
             filtered_conditional = (
                 col_config_filtered["column_specifiers"].get("conditional_columns")
@@ -776,8 +775,7 @@ def run_integrated_tsad(
             detail = "; ".join(col_errors) if col_errors else "unknown reason"
             return ErrorResult(error=f"No TSAD results produced for any target column: {detail}")
 
-        _TMP_BASE.mkdir(exist_ok=True)
-        tmp_dir = tempfile.mkdtemp(dir=_TMP_BASE)
+        tmp_dir = tempfile.mkdtemp(dir=work_dir())
         csv_path = os.path.join(tmp_dir, f"integrated_tsad_{uuid.uuid4()}.csv")
         df_combined.to_csv(csv_path, index=False)
         anomaly_count = (
