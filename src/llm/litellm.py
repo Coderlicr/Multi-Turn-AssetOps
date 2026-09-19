@@ -82,6 +82,18 @@ def _register_callbacks() -> None:
             _log.warning("litellm.integrations.custom_logger not available; metrics file skipped.")
 
 
+#: Reasoning models spend completion tokens on hidden reasoning before emitting any
+#: text. Measured on gpt-5.6-luna: at max_tokens=2048 the whole budget went to
+#: reasoning and the call returned an empty string with finish_reason="length".
+_MAX_TOKENS_DEFAULT = 2048
+_MAX_TOKENS_REASONING = 8192
+
+
+def max_tokens_for(model_id: str) -> int:
+    """Completion-token budget, raised for models that reason before answering."""
+    return _MAX_TOKENS_REASONING if omits_temperature(model_id) else _MAX_TOKENS_DEFAULT
+
+
 def omits_temperature(model_id: str) -> bool:
     """True for models that reject an explicit temperature.
 
@@ -153,11 +165,22 @@ class LiteLLMBackend(LLMBackend):
 
         kwargs: dict = {
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 2048,
+            "max_tokens": max_tokens_for(self._model_id),
             **resolve_call_kwargs(self._model_id),
         }
         if not omits_temperature(self._model_id):
             kwargs["temperature"] = temperature
 
         response = litellm.completion(**kwargs)
-        return response.choices[0].message.content
+        choice = response.choices[0]
+        content = choice.message.content or ""
+        if not content.strip():
+            # Returning "" here is worse than failing: callers store it as the
+            # answer, and the user sees an empty response with no error anywhere.
+            raise RuntimeError(
+                f"{self._model_id} returned empty content "
+                f"(finish_reason={getattr(choice, 'finish_reason', 'unknown')}, "
+                f"max_tokens={kwargs['max_tokens']}). If finish_reason is 'length', "
+                f"the completion budget was consumed before any text was produced."
+            )
+        return content
