@@ -172,6 +172,26 @@ _VALID_NEXT_NODES = {
 }
 
 
+def _action_text(action: object) -> str:
+    """Render one recommended action as a line of text.
+
+    CaseState.recommended_actions is typed list[str], but a specialist now
+    returns structured entries such as {"priority": 1, "action": "...",
+    "basis": "..."}. Pydantic does not validate on attribute assignment, so the
+    dicts went in unnoticed and ", ".join() raised inside respond_to_user,
+    taking the whole dialogue down.
+    """
+    if isinstance(action, str):
+        return action
+    if isinstance(action, dict):
+        text = action.get("action") or action.get("title") or action.get("description")
+        if text:
+            rank = action.get("priority", action.get("rank"))
+            return f"[{rank}] {text}" if rank is not None else str(text)
+        return json.dumps(action, ensure_ascii=False)
+    return str(action)
+
+
 def _turn_id(state: GraphState) -> str:
     return f"turn_{state.get('turn_index', 1):03d}"
 
@@ -507,7 +527,9 @@ class SupervisorAgent:
             if art.artifact_type in ("planning_result", "draft_action"):
                 actions = art.payload.get("recommended_actions") or art.payload.get("actions")
                 if isinstance(actions, list) and actions:
-                    case_state.recommended_actions = actions
+                    case_state.recommended_actions = [
+                        _action_text(a) for a in actions
+                    ]
         return case_state
 
     @staticmethod

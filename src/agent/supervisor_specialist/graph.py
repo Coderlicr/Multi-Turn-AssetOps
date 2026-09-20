@@ -10,6 +10,7 @@ Business logic, planning, and specialist selection all live in the agent classes
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -248,6 +249,20 @@ def _drop_evidence_carry_over(
             case_state.focus_metrics = []
 
 
+def _format_actions(actions: list) -> str:
+    """Join recommended actions, tolerating non-string entries.
+
+    A crash here loses the whole dialogue, so this never raises even if an
+    unexpected shape reaches it.
+    """
+    if not actions:
+        return "(none)"
+    return ", ".join(
+        a if isinstance(a, str) else json.dumps(a, ensure_ascii=False)
+        for a in actions
+    )
+
+
 def _turn_id(state: GraphState) -> str:
     return f"turn_{state.get('turn_index', 1):03d}"
 
@@ -452,7 +467,7 @@ def build_graph(deps: Dependencies, checkpointer=None):
             conversation_memory=format_conversation_memory(memory),
             artifacts_summary=format_artifacts_summary(artifacts),
             root_cause=case_state.root_cause or "(not identified)",
-            recommended_actions=", ".join(case_state.recommended_actions) or "(none)",
+            recommended_actions=_format_actions(case_state.recommended_actions),
             error_message=state.get("error_message") or "none",
         )
 
