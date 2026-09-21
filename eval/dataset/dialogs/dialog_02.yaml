@@ -1,0 +1,104 @@
+id: 2
+title: Cross-Asset Performance Comparison
+category: comparative_analysis
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 6", "Chiller 9"]
+
+data_caveats:
+  - "Efficiency coverage differs sharply between the two assets over June 2020:
+     Chiller 6 has 981 valid samples of 2896 (33.9%), Chiller 9 has 1691 of 2925
+     (57.8%). Comparing raw means without stating that gap is misleading."
+  - "Chiller Efficiency is kW/ton: a HIGHER number is worse. A rising trend is
+     degradation, not improvement."
+  - "The two assets do not expose identical sensors. Chillers 3/4/9 carry
+     'Condenser Water Supply To Chiller Temperature'; Chiller 6 instead carries
+     'Condenser Water Return To Tower Temperature'. Any per-sensor comparison must
+     account for this."
+
+turns:
+  - index: 1
+    user: "I want to compare the efficiency of Chiller 6 and Chiller 9 at the MAIN site over the past month."
+    evidence_domains: [iot]
+    facts:
+      - id: chiller6_coverage
+        claim: "Chiller 6 June 2020: 981 of 2896 efficiency samples are valid (33.9%)."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 6", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: chiller6_efficiency_coverage
+      - id: chiller9_coverage
+        claim: "Chiller 9 June 2020: 1691 of 2925 efficiency samples are valid (57.8%)."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 9", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: chiller9_efficiency_coverage
+    expectations:
+      - "Retrieves June 2020 for both assets ('past month' relative to 2020-07-01)."
+      - "Reports efficiency for each asset with its unit (kW/ton) and states the
+         direction of 'better'."
+      - "Surfaces that the two assets have very different valid-sample counts, or at
+         minimum states how zero readings were handled."
+    pitfalls:
+      - "Comparing means without excluding zero readings, or without disclosing that
+         Chiller 6's coverage is roughly half of Chiller 9's."
+      - "Treating a higher kW/ton value as better efficiency."
+
+  - index: 2
+    user: "Which one is degrading faster?"
+    evidence_domains: [iot]
+    facts:
+      - id: chiller9_steeper_trend
+        claim: "Chiller 9 has the steeper kW/ton trend (~7.1e-05 per sample against
+                Chiller 6's ~5.5e-05), and the larger absolute move across June
+                (0.3463 -> 0.4652 versus 0.2968 -> 0.3388)."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 9", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: chiller9_degrades_faster_than_chiller6
+    expectations:
+      - "Names one asset as degrading faster and supports it with a trend figure, not
+         only with endpoint values."
+      - "Qualifies the comparison given the unequal sample coverage."
+    pitfalls:
+      - "Declaring a winner from single-point or mean values with no trend estimate."
+      - "Ignoring that the two trends are computed over sample counts differing by
+         roughly 70%."
+
+  - index: 3
+    user: "Can you forecast what their efficiency will look like in 2 weeks?"
+    evidence_domains: [tsfm]
+    facts: []
+    expectations:
+      - "Either produces a forecast using a TSFM forecasting tool, or states plainly
+         why it could not and what was missing."
+      - "If a forecast is produced, it is tied to the asset, horizon and unit, and it
+         acknowledges the sparse input history."
+    pitfalls:
+      - "Presenting extrapolated numbers as a model forecast when no forecasting tool
+         succeeded."
+      - "Forecasting from the zero-filled series without noting that two thirds of
+         Chiller 6's samples are dropouts."
+
+  - index: 4
+    user: "What failure modes should I watch for on Chiller 6 given this trend?"
+    evidence_domains: [fmsr]
+    facts:
+      - id: chiller6_failure_modes
+        claim: "FMSR returns 7 failure modes for Chiller 6, including Compressor
+                Overheating, Evaporator Water side fouling, Condenser Water side
+                fouling, and Condenser Improper water side flow rate."
+        check:
+          tool: fmsr.get_failure_modes
+          args: {asset_name: "Chiller 6"}
+          expect_contains:
+            - "Condenser Water side fouling"
+            - "Evaporator Water side fouling"
+            - "Compressor Overheating"
+    expectations:
+      - "Names failure modes taken from the FMSR knowledge base rather than invented."
+      - "Connects the selected modes to the rising kW/ton trend specifically."
+    pitfalls:
+      - "Listing plausible-sounding chiller failure modes that FMSR does not return
+         for this asset."
+      - "Recommending modes without linking them to the observed evidence."

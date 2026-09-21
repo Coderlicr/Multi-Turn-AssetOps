@@ -1,0 +1,63 @@
+id: 8
+title: Predictive Failure Analysis with Sensor Validation
+category: predictive_maintenance
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 9"]
+
+data_caveats:
+  - "Chiller 9's work-order history is dominated by Freon Management (MT012); the
+     next-work-order prediction returns it as the leading category at p=0.33. That is a
+     modest probability, not a confident forecast."
+  - "Chiller 9 exposes no refrigerant-pressure or Freon-level sensor. The nearest
+     related channel is 'Liquid Refrigerant Evaporator Temperature'. A question about
+     'the Freon-related sensor' must be answered against the channels that exist."
+
+turns:
+  - index: 1
+    user: "Can you predict what the next failure might be for Chiller 9 (CWC04009)?"
+    evidence_domains: [wo]
+    facts:
+      - id: next_wo_freon
+        claim: "wo.predict_next_work_order returns Freon Management (MT012) as the
+                leading category for Chiller 9, at probability ~0.33."
+        check:
+          tool: wo.predict_next_work_order
+          args: {equipment_id: "Chiller 9"}
+          expect_contains: ["MT012", "Freon Management"]
+    expectations:
+      - "Resolves CWC04009 to Chiller 9 and uses the prediction tool or the history."
+      - "Reports the probability alongside the category rather than asserting certainty."
+    pitfalls:
+      - "Presenting the leading category as a definite next failure."
+      - "Naming a category absent from this asset's history."
+
+  - index: 2
+    user: "Is there any current sensor data that supports any of these predictions?"
+    evidence_domains: [iot, tsfm]
+    facts:
+      - id: chiller9_sensor_set
+        claim: "Chiller 9's 10 channels include Liquid Refrigerant Evaporator
+                Temperature but no dedicated Freon level or refrigerant pressure sensor."
+        check:
+          tool: iot.sensors
+          args: {site_name: MAIN, asset_id: "Chiller 9"}
+          expect_contains: ["Chiller 9 Liquid Refrigerant Evaporator Temperature"]
+    expectations:
+      - "Checks which channels could bear on the predicted category, and retrieves them."
+      - "States plainly when no channel directly measures the predicted failure mode."
+    pitfalls:
+      - "Claiming a Freon level or refrigerant pressure sensor exists on this asset."
+
+  - index: 3
+    user: "What specific anomaly did the Freon-related sensor show?"
+    evidence_domains: [tsfm]
+    facts: []
+    expectations:
+      - "Answers against the actual nearest channel (Liquid Refrigerant Evaporator
+         Temperature), naming it explicitly."
+      - "Reports a concrete finding — timing and magnitude — or states that detection
+         produced nothing for that channel."
+    pitfalls:
+      - "Describing an anomaly on a 'Freon sensor' that does not exist."
+      - "Reporting anomaly detail without having run detection on that channel."

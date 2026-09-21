@@ -1,0 +1,71 @@
+id: 12
+title: Chiller 6 Full Lifecycle Maintenance Review
+category: maintenance_planning
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 6"]
+
+data_caveats:
+  - "Chiller 6 has 333 work orders across its full history. The distribution is
+     dominated by planned work: Scheduled Maintenance 149, Routine Oil Analysis 36,
+     Routine Vibration Analysis 34, Internal Cleaning 21. A 'failure rate' computed
+     over all work orders without separating corrective from preventive would mostly
+     measure the maintenance schedule."
+  - "Over June 2020 Chiller 6's load-side channels are 65.4% zeros, so a sensor trend
+     across the same period rests on a third of the samples."
+
+turns:
+  - index: 1
+    user: "Chiller 6 has been problematic. Can you pull its complete maintenance history?"
+    evidence_domains: [wo]
+    facts:
+      - id: chiller6_wo_total
+        claim: "Chiller 6 has 333 work orders in total, led by Scheduled Maintenance (149)."
+        check:
+          tool: wo.get_work_orders
+          args: {equipment_id: "Chiller 6"}
+          expect_contains: ['"total": 333']
+    expectations:
+      - "Reports the lifetime total and a breakdown by category or code."
+    pitfalls:
+      - "Reporting a partial window as the complete history."
+
+  - index: 2
+    user: "Is the failure rate accelerating?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Separates corrective from preventive before computing any failure rate — the
+         history is dominated by planned work."
+      - "Compares across time periods rather than asserting a direction."
+    pitfalls:
+      - "Computing a 'failure rate' over all 333 orders, most of which are scheduled."
+      - "Declaring acceleration with no period-over-period comparison."
+
+  - index: 3
+    user: "What does the sensor data trend look like over the same period?"
+    evidence_domains: [iot]
+    facts:
+      - id: chiller6_load_dropout
+        claim: "June 2020: only 981 of 2896 Chiller 6 efficiency samples are valid (33.9%)."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 6", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: chiller6_efficiency_coverage
+    expectations:
+      - "Reports trends with the sample basis, excluding dropouts."
+      - "Aligns the sensor period with the work-order period discussed, or says it cannot."
+    pitfalls:
+      - "Reporting a trend computed over the zero-filled series."
+
+  - index: 4
+    user: "Is it more cost-effective to keep maintaining or replace?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Bases the argument on retrieved quantities — order counts, labour hours, or
+         durations — rather than generic replacement heuristics."
+      - "States plainly which cost inputs are unavailable in this system."
+    pitfalls:
+      - "Producing a cost comparison with invented cost figures."
+      - "Recommending replacement with no quantitative basis from the record."

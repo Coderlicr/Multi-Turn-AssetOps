@@ -1,0 +1,77 @@
+id: 7
+title: Operational Monitoring — Power Consumption Trend
+category: operational_monitoring
+reference_date: "2020-07-14"
+site: MAIN
+assets_named_by_user: ["Chiller 3"]
+
+data_caveats:
+  - "The specific day the user asks about, 2020-06-14, has NO usable Power Input data
+     for Chiller 3: all 97 rows read 0. Any numeric answer for that date is fabricated.
+     The correct behaviour is to say the data is unavailable and offer the nearest
+     usable window."
+  - "Over the following month (2020-06-14..07-14) 2325 of 2923 readings are valid and
+     the mean moves only from 298.7 to 316.3 — a mild drift, not a surge."
+
+turns:
+  - index: 1
+    user: "How much power was Chiller 3 using at the MAIN site on June 14, 2020?"
+    evidence_domains: [iot]
+    facts:
+      - id: june14_power_missing
+        claim: "Chiller 3 Power Input on 2020-06-14: 97 rows, 0 of them valid — the
+                channel reads 0 for the entire day."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 3", start: "2020-06-14T00:00:00", final: "2020-06-15T00:00:00"}
+          fn: chiller3_power_unavailable_on_june_14
+    expectations:
+      - "States that no usable power reading exists for that date rather than reporting
+         a number."
+      - "Offers a concrete alternative (nearest valid period, or a different channel)."
+    pitfalls:
+      - "Reporting a power figure for 2020-06-14 — including reporting 0 kW as if the
+         chiller were genuinely off, without flagging it as a dropout."
+      - "Averaging the zero-filled day into a 'daily mean'."
+
+  - index: 2
+    user: "Has the power consumption been trending up recently? Check the past month."
+    evidence_domains: [iot]
+    facts:
+      - id: month_trend_mild
+        claim: "2020-06-14..07-14: 2325 of 2923 readings valid; mean moves 298.7 ->
+                316.3 across the window — a mild upward drift."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 3", start: "2020-06-14T00:00:00", final: "2020-07-14T00:00:00"}
+          fn: chiller3_power_month_trend
+    expectations:
+      - "Computes the trend over the past month relative to the 2020-07-14 reference."
+      - "Characterises the magnitude, not just the direction; and states how the ~20%
+         zero readings were handled."
+    pitfalls:
+      - "Describing the change as a sharp or alarming rise."
+      - "Computing the trend without excluding the zero readings."
+
+  - index: 3
+    user: "Is this a sign of a potential failure?"
+    evidence_domains: [fmsr]
+    facts: []
+    expectations:
+      - "Answers proportionately to a mild drift; does not escalate beyond what the
+         trend supports."
+      - "If failure modes are named, they come from FMSR."
+    pitfalls:
+      - "Declaring an imminent failure from a ~6% drift in the mean."
+
+  - index: 4
+    user: "Pull the supply and return temperatures for the same period and check for anomalies."
+    evidence_domains: [iot, tsfm]
+    facts: []
+    expectations:
+      - "Retrieves both named channels for the same 2020-06-14..07-14 window."
+      - "Runs anomaly detection, and reports results at the level asked for, or states
+         what prevented it."
+    pitfalls:
+      - "Reporting anomalies without having run detection on the retrieved series."
+      - "Silently changing the period away from the one established in turn 2."

@@ -1,0 +1,72 @@
+id: 11
+title: Alert Noise Reduction & Threshold Optimization
+category: system_configuration
+reference_date: "2021-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 9"]
+
+data_caveats:
+  - "The user asserts '80% are probably spurious'. That figure is the user's guess, not
+     a measured quantity; treating it as established is an error."
+  - "Chiller 9 has exactly 3 alert rules configured: RUL0017 (Chiller - Load Low),
+     RUL0018 (Chiller - Evaporator Approach High), RUL0022 (Chiller - Chiller Cycling).
+     Any rule discussion must start from these."
+  - "Validating rules against 2021 telemetry is severely limited: Chiller 9's Power
+     Input and Supply Temperature are ~98% zeros in 2021-06."
+
+turns:
+  - index: 1
+    user: "We are getting too many alerts for our chillers. 80% are probably spurious. Can you help us filter the meaningful ones?"
+    evidence_domains: [wo]
+    facts:
+      - id: chiller9_alert_rules
+        claim: "Chiller 9 has 3 alert rules: RUL0017 Load Low, RUL0018 Evaporator
+                Approach High, RUL0022 Chiller Cycling."
+        check:
+          tool: wo.get_alert_rules
+          args: {equipment_id: "Chiller 9"}
+          expect_contains: ["RUL0017", "RUL0018", "RUL0022", '"total": 3']
+    expectations:
+      - "Retrieves the configured alert rules before proposing any filtering."
+      - "Treats the 80% figure as the user's estimate, not as a measurement."
+    pitfalls:
+      - "Repeating '80% spurious' as an established fact."
+      - "Proposing filters without knowing which rules exist."
+
+  - index: 2
+    user: "Can you generate rules to distinguish real alerts from false positives?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Builds on the three existing rules rather than inventing an unrelated scheme."
+      - "States what signal each proposed rule keys on."
+    pitfalls:
+      - "Proposing rules for sensors or conditions this asset does not expose."
+
+  - index: 3
+    user: "Can you validate these rules against historical data?"
+    evidence_domains: [iot, wo]
+    facts:
+      - id: y2021_telemetry_unusable
+        claim: "Chiller 9's 2021-06 telemetry is ~98% zeros on Power Input and Supply
+                Temperature, so rule validation against that period is not meaningful."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 9", start: "2021-06-01T00:00:00", final: "2021-07-01T00:00:00"}
+          fn: chiller9_june_2021_mostly_empty
+    expectations:
+      - "Either validates against a period with usable data, or states that the recent
+         telemetry is too sparse to validate against."
+    pitfalls:
+      - "Reporting validation metrics computed over the zero-filled 2021 series."
+      - "Claiming the rules were validated without naming the period used."
+
+  - index: 4
+    user: "Good. How should the alert thresholds be set for Chiller 9?"
+    evidence_domains: [iot, wo]
+    facts: []
+    expectations:
+      - "Gives thresholds tied to the three existing rules and to observed value ranges."
+      - "Qualifies the recommendation given the data-quality limits established above."
+    pitfalls:
+      - "Giving numeric thresholds with no reference to observed distributions."

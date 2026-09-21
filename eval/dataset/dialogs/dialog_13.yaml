@@ -1,0 +1,64 @@
+id: 13
+title: Real-Time Anomaly Response with Recovery
+category: fault_diagnosis
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 9"]
+
+data_caveats:
+  - "In the two weeks to 2020-07-01, Chiller 9's Power Input is 98.3% zeros while the
+     temperature channels are complete. A trip cannot be confirmed or timed from the
+     power channel; conclusions must rest on the channels that carry data, and the gap
+     must be stated."
+  - "The user reports the trip; the record does not contain a trip event. The absence
+     of a corroborating event is itself a finding, not something to paper over."
+
+turns:
+  - index: 1
+    user: "An operator just reported that Chiller 9 tripped at the MAIN site. Investigate immediately."
+    evidence_domains: [iot]
+    facts:
+      - id: power_channel_unusable
+        claim: "2020-06-17..07-01 for Chiller 9: Power Input 98.3% zeros, Supply
+                Temperature 0% zeros."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 9", start: "2020-06-17T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: chiller9_power_absent_before_july_2020
+    expectations:
+      - "Retrieves recent telemetry for Chiller 9 promptly, consistent with the urgency."
+      - "Reports which channels carry usable data and which do not, rather than
+         treating the zero power readings as evidence the unit stopped."
+    pitfalls:
+      - "Reading the ~98% zero Power Input as confirmation of the trip."
+      - "Stating a trip time that no channel supports."
+
+  - index: 2
+    user: "What caused the trip?"
+    evidence_domains: [tsfm, fmsr]
+    facts: []
+    expectations:
+      - "Bases any cause on channels that actually carry data over the period."
+      - "If FMSR modes are cited, they come from the knowledge base for this asset."
+      - "States confidence, and what additional evidence would settle it."
+    pitfalls:
+      - "Naming a definite cause given that the primary electrical channel is unusable."
+
+  - index: 3
+    user: "What is the recommended recovery procedure?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Gives a procedure connected to the hypothesised cause, not a generic restart list."
+    pitfalls:
+      - "Producing a recovery checklist unrelated to anything found in this investigation."
+
+  - index: 4
+    user: "After the repair, how should I verify it is operating normally?"
+    evidence_domains: [iot, tsfm]
+    facts: []
+    expectations:
+      - "Names the specific channels and value ranges to watch, drawn from this asset."
+      - "Accounts for the fact that the power channel is currently unreliable."
+    pitfalls:
+      - "Proposing verification on a channel shown to be ~98% missing without saying so."

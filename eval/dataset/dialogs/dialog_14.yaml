@@ -1,0 +1,65 @@
+id: 14
+title: Sensor Drift Detection & Validation
+category: operational_monitoring
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 6"]
+
+data_caveats:
+  - "Across June 2020 Chiller 6's Supply Temperature moves from ~45.6 to ~69.8 while
+     the Setpoint holds at ~45.5-46.0. The measured channel diverges from the target by
+     roughly 24 degrees; the setpoint itself is stable."
+  - "Load-side channels (% Loaded, Efficiency, Power Input, Tonnage) are 65.4% zeros in
+     the same month, so 'is the chiller actually running hotter' cannot be settled from
+     load data alone."
+
+turns:
+  - index: 1
+    user: "I suspect some sensors on Chiller 6 may be drifting. Can you check?"
+    evidence_domains: [iot]
+    facts:
+      - id: supply_setpoint_divergence
+        claim: "June 2020: Supply Temperature 45.55 -> 69.76 (first/last 200 valid
+                samples) while Setpoint stays ~45.5-46.0."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 6", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: chiller6_supply_diverges_from_setpoint
+    expectations:
+      - "Examines multiple channels rather than asserting drift from one."
+      - "Reports the Supply-vs-Setpoint divergence with figures."
+    pitfalls:
+      - "Concluding 'no drift' without comparing against the setpoint or a reference."
+      - "Attributing drift to the setpoint channel, which is stable."
+
+  - index: 2
+    user: "What did you find?"
+    evidence_domains: [iot]
+    facts: []
+    expectations:
+      - "Summarises per-channel findings with magnitudes and the period."
+      - "Separates channels with usable data from the 65.4%-zero load channels."
+    pitfalls:
+      - "Reporting statistics over the zero-filled load channels as if they were valid."
+
+  - index: 3
+    user: "Could the Supply Temperature drift be a real temperature change or sensor error?"
+    evidence_domains: [iot, fmsr]
+    facts: []
+    expectations:
+      - "Lays out what would distinguish the two — e.g. corroboration from Return
+         Temperature or load, and the stability of the setpoint."
+      - "Acknowledges that the sparse load channels limit that cross-check."
+      - "Does not claim certainty the evidence cannot support."
+    pitfalls:
+      - "Picking one explanation confidently without naming the discriminating evidence."
+
+  - index: 4
+    user: "What should I do about it?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Recommends an action proportionate to the uncertainty — e.g. calibration check
+         before any physical intervention."
+    pitfalls:
+      - "Recommending a physical repair as though sensor error had been ruled out."

@@ -1,0 +1,89 @@
+id: 9
+title: Multi-KPI Anomaly Root Cause Investigation
+category: full_pipeline
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: []
+
+data_caveats:
+  - "The dominant anomaly in June 2020 across MAIN is a telemetry dropout, not a
+     thermal event: at 2020-06-08T08:00-04:00 all four chillers read exactly 0.0 on all
+     five temperature channels at once (20 channels simultaneously)."
+  - "tsfm result files carry timestamps 4 hours ahead of iot.history_csv's -04:00
+     series, so the same event appears as 08:00 or 12:00 depending on the file. Citing a
+     time without the convention is ambiguous."
+  - "Load-side channels carry heavy dropout in the period (Chiller 6 65.4%, Chiller 9
+     ~42%), so 'multiple KPI anomalies' will be dominated by missing data unless it is
+     filtered out."
+
+turns:
+  - index: 1
+    user: "Multiple KPI anomalies have been reported for chillers at the MAIN site recently. Can you give me an overview?"
+    evidence_domains: [iot, tsfm]
+    facts:
+      - id: site_wide_zero_event_d9
+        claim: "At 2020-06-08T08:00-04:00 every temperature channel on Chiller 3 reads
+                0.0; the same holds for Chillers 4, 6 and 9."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 3", start: "2020-06-08T07:00:00", final: "2020-06-08T09:00:00"}
+          fn: all_temperature_channels_zero_at_0800
+      - id: main_four_assets_d9
+        claim: "Site MAIN has four chillers, so an overview covers all four."
+        check:
+          tool: iot.assets
+          args: {site_name: MAIN}
+          expect_contains: ["Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"]
+    expectations:
+      - "Covers all four assets, since no asset is named."
+      - "Gives a per-asset or per-channel breakdown rather than a single aggregate count."
+      - "Separates dropout-driven anomalies from behavioural ones."
+    pitfalls:
+      - "Reporting only a total anomaly count with no per-asset or per-channel detail."
+      - "Treating the synchronized zero readings as a physical KPI excursion."
+
+  - index: 2
+    user: "Are there causal linkages between these anomalies?"
+    evidence_domains: [tsfm, fmsr]
+    facts: []
+    expectations:
+      - "Notes that simultaneity across four independent assets points to a shared
+         instrumentation path rather than four coincident machine faults."
+      - "Distinguishes correlation in time from an established causal link."
+    pitfalls:
+      - "Asserting causal links between channels on the strength of co-occurrence alone."
+
+  - index: 3
+    user: "Can you validate these causal links with sensor data?"
+    evidence_domains: [iot, tsfm]
+    facts: []
+    expectations:
+      - "Either performs a concrete check against the series, or states which capability
+         is missing for a true causal validation."
+      - "Reports row-level evidence — timestamps and channels — not just aggregates."
+    pitfalls:
+      - "Claiming validation while only re-running anomaly detection."
+      - "Reporting an aggregate anomaly count as if it validated a causal claim."
+
+  - index: 4
+    user: "What is the underlying root cause?"
+    evidence_domains: [fmsr, tsfm]
+    facts: []
+    expectations:
+      - "Commits to a most-likely root cause with confidence, consistent with the
+         telemetry-dropout evidence being dominant."
+      - "States the timezone convention for any timestamp cited."
+    pitfalls:
+      - "Naming a mechanical root cause while the strongest evidence is a data outage."
+      - "Citing 12:00 as a local-time event without noting the tsfm files are UTC."
+
+  - index: 5
+    user: "Recommend the top 3 work orders to address this comprehensively."
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Produces exactly three prioritised recommendations, each tied to a finding."
+      - "Recommendations follow from the root cause established in turn 4."
+    pitfalls:
+      - "Returning retrieved work-order records instead of prioritised recommendations."
+      - "Recommending purely mechanical work when the leading finding is instrumentation."
