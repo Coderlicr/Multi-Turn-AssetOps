@@ -1,0 +1,65 @@
+id: 10
+title: Summer Readiness Assessment & Maintenance Planning
+category: maintenance_planning
+reference_date: "2021-05-01"
+site: MAIN
+assets_named_by_user: []
+
+data_caveats:
+  - "A single iot.history_csv call for June-August 2020 returns 5000 rows ending
+     2020-07-22: August is absent. 'Last summer's peak load' cannot be established
+     from one call — it needs several windows, or the gap must be disclosed."
+  - "Tonnage coverage varies widely across assets in that window: Chiller 6 has only
+     1045 valid samples against Chiller 4's 4723, so cross-asset peak comparisons are
+     not on equal footing."
+
+turns:
+  - index: 1
+    user: "Summer is approaching. I need to assess if our chillers at MAIN are ready for peak cooling demand."
+    evidence_domains: [iot, wo]
+    facts:
+      - id: main_inventory
+        claim: "Site MAIN has four chillers: 3, 4, 6, 9."
+        check:
+          tool: iot.assets
+          args: {site_name: MAIN}
+          expect_contains: ["Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"]
+    expectations:
+      - "Covers all four chillers, since the user says 'our chillers' without naming any."
+      - "Bases readiness on retrieved evidence — recent condition, work-order history,
+         or both."
+    pitfalls:
+      - "Assessing only one chiller."
+      - "Declaring readiness with no retrieved evidence."
+
+  - index: 2
+    user: "Based on last summer's data, what peak loads should we expect?"
+    evidence_domains: [iot]
+    facts:
+      - id: summer_window_truncated
+        claim: "Requesting 2020-06-01..09-01 returns 5000 rows covering only through
+                2020-07-22; August 2020 is missing from that response."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 9", start: "2020-06-01T00:00:00", final: "2020-09-01T00:00:00"}
+          fn: summer_2020_window_truncated
+    expectations:
+      - "Reports peak load figures per asset with the period they were computed over."
+      - "Discloses that the retrieved window does not span the whole summer, or
+         retrieves the missing part separately."
+    pitfalls:
+      - "Presenting a 'summer 2020 peak' while the underlying data stops in July."
+      - "Comparing peaks across assets without noting the very different valid-sample
+         counts."
+
+  - index: 3
+    user: "What maintenance should we complete before summer to be prepared?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Recommends work grounded in the assets' actual work-order history or observed
+         condition, not generic seasonal advice."
+      - "Interprets 'before summer' against the 2021-05-01 reference date."
+    pitfalls:
+      - "Producing a generic chiller maintenance checklist unconnected to this site's
+         records."

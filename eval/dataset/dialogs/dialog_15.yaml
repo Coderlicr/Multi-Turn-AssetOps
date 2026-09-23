@@ -1,0 +1,79 @@
+id: 15
+title: End-to-End Early Detection and Remediation Pipeline
+category: full_pipeline
+reference_date: "2021-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 9"]
+
+data_caveats:
+  - "Chiller 9's 2021-06 telemetry is ~98% zeros on both Power Input and Supply
+     Temperature. Anomaly detection over that month describes dropouts, not machine
+     behaviour; a correct pipeline says so rather than reporting the dropouts as faults."
+  - "The asset has exactly one 2021-06 record in the work-order system: WO384010, a
+     preventive Vibration Analysis."
+
+turns:
+  - index: 1
+    user: "We are building an early detection and remediation system for potential failures on Chiller 9 at the MAIN site. Start by collecting the relevant data."
+    evidence_domains: [iot]
+    facts:
+      - id: june_2021_telemetry_sparse
+        claim: "Chiller 9 2021-06: Power Input ~98.4% zeros, Supply Temperature ~97.8% zeros."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 9", start: "2021-06-01T00:00:00", final: "2021-07-01T00:00:00"}
+          fn: chiller9_june_2021_mostly_empty
+    expectations:
+      - "Collects telemetry for the asset and reports the coverage it actually obtained."
+    pitfalls:
+      - "Reporting a successful collection without noting that nearly all readings are dropouts."
+
+  - index: 2
+    user: "Run anomaly detection and identify any operation violations."
+    evidence_domains: [tsfm]
+    facts: []
+    expectations:
+      - "Runs detection on the collected series and reports results with the period."
+      - "Distinguishes dropout-driven anomalies from genuine operational violations."
+    pitfalls:
+      - "Presenting the ~98% zero readings as detected operational violations."
+
+  - index: 3
+    user: "Diagnose the root cause and assess severity."
+    evidence_domains: [fmsr]
+    facts: []
+    expectations:
+      - "Ties severity to what the evidence supports; data unavailability is itself the
+         dominant finding for this period."
+      - "Any failure mode named comes from FMSR."
+    pitfalls:
+      - "Assigning a high-severity mechanical diagnosis on a month with almost no data."
+
+  - index: 4
+    user: "Check if any corrective work orders already exist for this issue."
+    evidence_domains: [wo]
+    facts:
+      - id: only_preventive_record
+        claim: "The only 2021-06 record for Chiller 9 is WO384010, a preventive
+                Vibration Analysis — not a corrective order."
+        check:
+          tool: wo.get_events
+          args: {equipment_id: "Chiller 9", start_date: "2021-06-01", end_date: "2021-06-30"}
+          expect_contains: ["WO384010", '"total": 1']
+    expectations:
+      - "Reports that no corrective work order exists for the period, distinguishing it
+         from the preventive record that does."
+    pitfalls:
+      - "Presenting WO384010 as a corrective order."
+
+  - index: 5
+    user: "Good. Summarize everything into a report for management."
+    evidence_domains: []
+    facts: []
+    expectations:
+      - "Summarises only what the previous turns established, including the data-quality
+         limitation, without introducing new claims."
+      - "Is usable by a non-specialist reader."
+    pitfalls:
+      - "Introducing findings, numbers or recommendations not produced earlier in the dialogue."
+      - "Omitting the data-coverage caveat that qualifies every finding above."

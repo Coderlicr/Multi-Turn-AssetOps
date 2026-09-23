@@ -1,0 +1,67 @@
+id: 4
+title: Work Order History Review & Maintenance Optimization
+category: maintenance_planning
+reference_date: "2020-01-01"
+site: MAIN
+assets_named_by_user: ["Chiller 9"]
+
+data_caveats:
+  - "Work orders are queried by `equipment_id`, which accepts either the display name
+     ('Chiller 9') or the tag ('CWC04009'); both normalise to the same asset."
+  - "This dialogue is scoped to 2017-2019 and needs no sensor data. Pulling telemetry
+     is unnecessary work, not a bonus."
+
+turns:
+  - index: 1
+    user: "Show me the work order history for Chiller 9 for 2017 through 2019."
+    evidence_domains: [wo]
+    facts:
+      - id: chiller9_wo_2017_2019
+        claim: "Chiller 9 has 83 work orders between 2017-01-01 and 2019-12-31.
+                The largest categories are Freon Level Check (21), Sensor Calibration
+                (9), Routine Oil Analysis (9) and Routine Vibration Analysis (7)."
+        check:
+          tool: wo.get_work_orders
+          args: {equipment_id: "Chiller 9", start_date: "2017-01-01", end_date: "2019-12-31"}
+          expect_contains: ['"total": 83']
+    expectations:
+      - "Reports the count for the requested window, not the asset's lifetime total
+         (which is 335)."
+      - "Breaks the history down by category or code rather than dumping raw rows."
+    pitfalls:
+      - "Quoting the lifetime total of 335 as if it were the 2017-2019 figure."
+      - "Retrieving sensor telemetry, which this question does not require."
+
+  - index: 2
+    user: "Are there any corrective work orders that could have been bundled together?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Distinguishes corrective from preventive orders before proposing bundles."
+      - "Bases any bundling proposal on observed proximity in time, asset or code —
+         not on generic maintenance advice."
+    pitfalls:
+      - "Proposing bundles without having separated corrective from preventive work."
+      - "Inventing work-order ids or dates that do not appear in the retrieved set."
+
+  - index: 3
+    user: "Based on this history, what is the most likely next failure?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Grounds the prediction in the observed distribution — Freon Management is the
+         dominant category for this asset — or uses the work-order prediction tool."
+      - "States the basis and the uncertainty rather than asserting a single outcome."
+    pitfalls:
+      - "Predicting a failure mode that has no support in this asset's history."
+      - "Presenting a prediction with no stated basis."
+
+  - index: 4
+    user: "Should I schedule a preventive maintenance window for next month?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Gives a recommendation with a reason tied to the history reviewed."
+      - "Interprets 'next month' against the 2020-01-01 reference date."
+    pitfalls:
+      - "Recommending a schedule without referencing anything found in the history."

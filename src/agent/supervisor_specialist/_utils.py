@@ -10,6 +10,18 @@ from typing import Any
 
 _log = logging.getLogger(__name__)
 
+#: How much of one tool result is shown to the model.
+#: Measured over 1005 successful calls: result sizes are bimodal. 85% are already
+#: under 2000 chars (csv_stats 1.8KB, history_csv 1.2KB, sensors 0.9KB), and the
+#: rest dump bulk raw data (iot.history 720KB, wo.get_events up to 443KB) that no
+#: reasonable cap can hold.
+#: The ReAct prompt re-sends every prior result on each step (up to 20 calls), so
+#: this value is multiplied by the number of calls made. Measured worst case over
+#: 190 specialist runs: 20.7K chars in the final step at 2000, 44.7K at 8000.
+#: 4000 keeps wo.predict_next_work_order (max 4.7KB) nearly whole and recovers most
+#: of wo.get_work_order_distribution (p90 4.1KB) without doubling the worst case.
+TOOL_RESULT_PREVIEW_CHARS = 4000
+
 _PATH_RE = re.compile(r"(/[^\s'\"),]+(?:\.csv|\.json|\.pkl|\.txt|/))")
 
 
@@ -43,20 +55,57 @@ def parse_json_from_llm(raw: str) -> dict | None:
     return None
 
 
+_PARAM_DOC_CHARS = 180
+
+
+def _param_type(spec: dict) -> str:
+    """Readable type for a JSON-schema property, including anyOf unions."""
+    if "type" in spec:
+        return str(spec["type"])
+    options = [o.get("type") for o in spec.get("anyOf", []) if o.get("type")]
+    concrete = [o for o in options if o != "null"]
+    if concrete:
+        return "|".join(concrete)
+    return "any"
+
+
 def format_tool_schemas_for_prompt(tool_schemas: list[dict]) -> str:
-    """Format a list of tool schema dicts into a human-readable string for LLM prompts."""
+    """Format tool schemas for an LLM prompt, keeping per-parameter guidance.
+
+    The signature line alone ("save_model_dir: string?") drops the description
+    and the default, so a model with nothing to go on invents a value. Across
+    39 recorded fine-tuning calls not one passed save_model_dir in the form its
+    schema asks for -- a relative directory name, default "tuned_models" --
+    every one passed an invented absolute path, and the ones that worked only
+    worked because the invented path happened to be writable.
+    """
     lines = []
     for t in tool_schemas:
         name = t.get("name", "")
-        description = t.get("description", "")
+        description = (t.get("description") or "").strip()
         schema = t.get("input_schema", {})
         props = schema.get("properties", {})
         required_set = set(schema.get("required", []))
+
         params = ", ".join(
-            f"{k}: {v.get('type', 'any')}{'?' if k not in required_set else ''}"
+            f"{k}: {_param_type(v)}{'' if k in required_set else '?'}"
             for k, v in props.items()
         )
-        lines.append(f"- {name}({params}): {description}")
+        lines.append(f"- {name}({params}): {description.splitlines()[0] if description else ''}")
+
+        for key, spec in props.items():
+            doc = (spec.get("description") or "").strip().replace("\n", " ")
+            has_default = "default" in spec
+            if not doc and not has_default:
+                continue
+            bits = []
+            if key not in required_set:
+                bits.append(
+                    f"optional, default {spec['default']!r}" if has_default else "optional"
+                )
+            if doc:
+                bits.append(doc[:_PARAM_DOC_CHARS] + ("..." if len(doc) > _PARAM_DOC_CHARS else ""))
+            lines.append(f"    {key}: {' — '.join(bits)}")
     return "\n".join(lines) if lines else "(no tools available)"
 
 
@@ -176,8 +225,8 @@ def format_tool_results_for_prompt(tool_results: list) -> str:
     for r in tool_results:
         if r.status == "ok":
             result_str = str(r.result or "")
-            result_preview = result_str[:2000]
-            if len(result_str) > 2000:
+            result_preview = result_str[:TOOL_RESULT_PREVIEW_CHARS]
+            if len(result_str) > TOOL_RESULT_PREVIEW_CHARS:
                 result_preview += "... [truncated]"
             lines.append(f"[{r.order}] {r.tool_name} -> OK\n{result_preview}")
         else:

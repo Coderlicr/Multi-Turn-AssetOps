@@ -1,0 +1,90 @@
+id: 3
+title: Early Detection System Setup for Condenser Fouling
+category: predictive_maintenance
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 9"]
+
+data_caveats:
+  - "Chiller 9 carries 'Condenser Water Supply To Chiller Temperature'. It does NOT
+     carry 'Condenser Water Return To Tower Temperature' — that sensor exists only on
+     Chiller 6. A condenser-fouling detection design for Chiller 9 must work from the
+     channels this asset actually has."
+  - "Over June 2020 Chiller 9's efficiency channel is 57.8% valid (1691 of 2925); the
+     load-side channels carry comparable dropout. Fine-tuning and validation run on a
+     series with substantial gaps."
+
+turns:
+  - index: 1
+    user: "I want to set up an early detection system for condenser water side fouling on Chiller 9."
+    evidence_domains: [fmsr]
+    facts:
+      - id: fouling_is_a_known_mode
+        claim: "'Condenser Water side fouling' is one of the 7 failure modes FMSR
+                returns for Chiller 9."
+        check:
+          tool: fmsr.get_failure_modes
+          args: {asset_name: "Chiller 9"}
+          expect_contains: ["Condenser Water side fouling"]
+    expectations:
+      - "Confirms the failure mode exists in the knowledge base for this asset before
+         designing around it."
+      - "Sketches what the detection system needs: signals, history, a model."
+    pitfalls:
+      - "Designing against a failure mode not defined for this asset."
+
+  - index: 2
+    user: "Which sensors should I prioritize for the detection model?"
+    evidence_domains: [fmsr, iot]
+    facts:
+      - id: chiller9_actual_sensors
+        claim: "Chiller 9's condenser-related channel is 'Condenser Water Supply To
+                Chiller Temperature'; it has no 'Return To Tower' channel."
+        check:
+          tool: iot.sensors
+          args: {site_name: MAIN, asset_id: "Chiller 9"}
+          expect_contains:
+            - "Chiller 9 Condenser Water Supply To Chiller Temperature"
+            - "Chiller 9 Condenser Water Flow"
+    expectations:
+      - "Prioritised sensors are drawn from the failure-mode-to-sensor mapping and
+         cross-checked against this asset's real inventory."
+    pitfalls:
+      - "Recommending 'Condenser Water Return To Tower Temperature' for Chiller 9 —
+         that channel belongs to Chiller 6."
+
+  - index: 3
+    user: "Can you fine-tune a forecasting model using our historical data?"
+    evidence_domains: [iot, tsfm]
+    facts: []
+    expectations:
+      - "Retrieves a CSV first, then fine-tunes on that concrete path."
+      - "Reports the outcome honestly — including failure — rather than asserting a
+         trained model."
+      - "Notes the dropout level in the training window."
+    pitfalls:
+      - "Claiming fine-tuning succeeded when the tool did not return a checkpoint."
+      - "Fine-tuning on the zero-filled series without mentioning it."
+
+  - index: 4
+    user: "Now run anomaly detection on the last two months of data to validate."
+    evidence_domains: [tsfm]
+    facts: []
+    expectations:
+      - "Uses a two-month window ending near 2020-07-01."
+      - "Reports detected anomalies with asset, channel and timing, and separates
+         dropout-driven detections from genuine ones."
+    pitfalls:
+      - "Reporting only an aggregate anomaly count with no per-channel detail."
+      - "Presenting zero-reading dropouts as fouling evidence."
+
+  - index: 5
+    user: "Set up ongoing monitoring alerts for this."
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Proposes alert conditions tied to the sensors prioritised in turn 2 and the
+         thresholds observed in the data."
+      - "Relates the proposal to the alert rules that already exist."
+    pitfalls:
+      - "Proposing alerts on channels this asset does not have."

@@ -10,6 +10,8 @@ from datetime import datetime
 from typing import Optional
 
 import numpy as np
+
+from servers.paths import outputs_dir
 import pandas as pd
 
 
@@ -36,9 +38,17 @@ def _get_dataset_path(dataset: str) -> str:
 
 
 def _get_outputs_path(outputs: str) -> str:
+    """Anchor a relative outputs path under the shared outputs directory.
+
+    The fallback base used to be "", which silently turned "relative to outputs
+    dir" into "relative to the current working directory": with the MCP server
+    started from the repo root, a fine-tuning run wrote its checkpoint into the
+    source tree.
+    """
     if os.path.isabs(outputs):
         return outputs
-    return os.path.join(os.environ.get("PATH_TO_OUTPUTS_DIR", ""), outputs)
+    base = os.environ.get("PATH_TO_OUTPUTS_DIR") or str(outputs_dir())
+    return os.path.join(base, outputs)
 
 
 def _parse_timestamps(values) -> pd.Series:
@@ -59,8 +69,12 @@ def _parse_timestamps(values) -> pd.Series:
 
 
 def _write_json_to_temp(json_data: str) -> str:
-    temp_dir = tempfile.gettempdir()
-    temp_file_path = os.path.join(temp_dir, f"{uuid.uuid4().hex}.json")
+    """Write a result file an artifact will point at.
+
+    These are returned to the agent as results_file, so they belong in outputs/,
+    not in the system temp directory where they used to land.
+    """
+    temp_file_path = os.path.join(str(outputs_dir()), f"{uuid.uuid4().hex}.json")
     with open(temp_file_path, "w") as f:
         f.write(json_data)
     return temp_file_path

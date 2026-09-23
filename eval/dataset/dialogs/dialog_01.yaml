@@ -1,0 +1,118 @@
+id: 1
+title: Temperature Anomaly Diagnosis & Remediation Recommendation
+category: fault_diagnosis
+reference_date: "2020-07-01"
+site: MAIN
+
+# The user says "our chiller" but never names one, and the site has four.
+# A correct answer resolves or surfaces that ambiguity instead of picking one.
+assets_named_by_user: []
+
+data_caveats:
+  - "Sensor dropouts are encoded as 0.0, not as nulls. For Chiller 6 over June 2020:
+     65.4% of Chiller % Loaded / Chiller Efficiency / Power Input / Tonnage read 0,
+     and 53.3% of Condenser Water Flow. Any statistic over those columns must exclude
+     zeros or say it did not; a naive mean shows efficiency falling to 0."
+  - "iot.history_csv timestamps carry a -04:00 offset; tsfm.run_integrated_tsad result
+     files carry none and are 4 hours ahead (UTC). An answer that cites an anomaly time
+     must make clear which convention it is using."
+  - "The date bound parameter of iot.history_csv is named `final`, not `end`. Passing
+     `end` is silently ignored and returns rows past the requested window."
+
+turns:
+  - index: 1
+    user: "The temperature of our chiller at Site MAIN seems unusually high lately. Can you look into it?"
+    evidence_domains: [iot]
+    facts:
+      - id: main_has_four_chillers
+        claim: "Site MAIN has four chillers: Chiller 3, Chiller 4, Chiller 6, Chiller 9."
+        check:
+          tool: iot.assets
+          args: {site_name: MAIN}
+          expect_contains: ["Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"]
+      - id: chiller6_sensor_inventory
+        claim: "Chiller 6 exposes 10 sensors, of which 5 are temperature channels:
+                Supply, Return, Setpoint, Condenser Water Return To Tower,
+                Liquid Refrigerant Evaporator."
+        check:
+          tool: iot.sensors
+          args: {site_name: MAIN, asset_id: "Chiller 6"}
+          expect_contains:
+            - "Chiller 6 Supply Temperature"
+            - "Chiller 6 Return Temperature"
+            - "Chiller 6 Setpoint Temperature"
+            - "Chiller 6 Condenser Water Return To Tower Temperature"
+            - "Chiller 6 Liquid Refrigerant Evaporator Temperature"
+      - id: june_window_shape
+        claim: "June 2020 for one chiller returns 2896 rows at 15-minute intervals,
+                2020-06-01T00:00-04:00 through 2020-06-30T23:45-04:00."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 6", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: june_window_shape
+    expectations:
+      - "Establishes which assets exist at MAIN rather than assuming a single chiller."
+      - "Retrieves temperature history for a period consistent with 'lately' relative to
+         the 2020-07-01 reference date (June 2020 is the expected reading)."
+      - "States which asset(s) the findings apply to."
+    pitfalls:
+      - "Naming one specific chiller as the subject without having discovered the
+         inventory or without flagging the assumption."
+      - "Asserting a concrete anomaly onset time before any detection has been run."
+
+  - index: 2
+    user: "What could be causing this temperature spike?"
+    evidence_domains: [tsfm, fmsr]
+    facts:
+      - id: site_wide_zero_event
+        claim: "At 2020-06-08T08:00-04:00 (12:00 UTC) all four chillers report exactly 0.0
+                on all five temperature channels simultaneously — 20 channels at once.
+                For Chiller 6 this is the only all-zero temperature timestamp in June 2020."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 3", start: "2020-06-08T07:00:00", final: "2020-06-08T09:00:00"}
+          fn: all_temperature_channels_zero_at_0800
+      - id: supply_temp_rise
+        claim: "Chiller 6 Supply Temperature daily mean rises from 60.80 (Jun 10-14)
+                to 67.41 (Jun 15-19)."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 6", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: supply_temperature_rises_mid_june
+    expectations:
+      - "Separates data-quality artefacts from physical causes: a simultaneous all-zero
+         reading across four independent assets is not a thermal event."
+      - "If physical failure modes are proposed, they are obtained from the FMSR
+         knowledge base rather than invented."
+      - "Any numeric claim about efficiency, load or power states how zero readings
+         were handled."
+    pitfalls:
+      - "Attributing the anomaly to physical fouling or compressor behaviour without
+         addressing the simultaneous zero readings."
+      - "Reporting efficiency degradation computed over zero-filled rows."
+
+  - index: 3
+    user: "Which cause is most likely given the sensor data patterns?"
+    evidence_domains: [tsfm, fmsr]
+    facts:
+      - id: efficiency_trend_excluding_zeros
+        claim: "Excluding zero readings, Chiller 6 Chiller Efficiency (kW/ton) moves from
+                0.2968 to 0.3388 across June 2020 — a ~14% rise in kW/ton, i.e. a
+                degradation, based on 981 valid samples out of 2896."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 6", start: "2020-06-01T00:00:00", final: "2020-07-01T00:00:00"}
+          fn: efficiency_degrades_once_zeros_excluded
+    expectations:
+      - "Commits to a single most-likely cause and states a confidence level."
+      - "Grounds the ranking in specific observed evidence (timestamps, channels, or
+         magnitudes) rather than restating generic failure modes."
+      - "If an anomaly timestamp is cited, the timezone convention is unambiguous."
+      - "Acknowledges what remains unresolved given the data-quality limitations."
+    pitfalls:
+      - "Citing 2020-06-08 12:00 as a local-time event without noting it is UTC;
+         the source data places the outage at 08:00 local."
+      - "Concluding condenser- or evaporator-side fouling as the primary cause while the
+         dominant detected anomaly is the telemetry dropout."
+      - "Claiming high confidence without referencing the 65.4% dropout rate on the
+         efficiency and load channels."

@@ -1,0 +1,70 @@
+id: 5
+title: Anomaly Surge Investigation (June 2021)
+category: fault_diagnosis
+reference_date: "2021-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 9"]
+
+data_caveats:
+  - "The user's second turn asserts 'that is a lot of alerts'. The record does not
+     support it: Chiller 9 has exactly ONE event in 2021-06, a preventive Vibration
+     Analysis work order (WO384010). A correct answer corrects the premise instead of
+     playing along."
+  - "'CWC04009' is the equipment tag for Chiller 9; both forms resolve to the same asset."
+
+turns:
+  - index: 1
+    user: "I am reviewing operations for early July 2021. How did Chiller 9 (CWC04009) perform in June 2021?"
+    evidence_domains: [iot, wo]
+    facts:
+      - id: june_2021_single_event
+        claim: "Chiller 9 has exactly 1 event in 2021-06: WO384010, a preventive
+                (PM) Vibration Analysis."
+        check:
+          tool: wo.get_events
+          args: {equipment_id: "Chiller 9", start_date: "2021-06-01", end_date: "2021-06-30"}
+          expect_contains: ['"total": 1', "WO384010", "Vibration Analysis"]
+    expectations:
+      - "Resolves CWC04009 to Chiller 9 without asking the user to clarify."
+      - "Reports June 2021 activity as it actually is — a single preventive event."
+    pitfalls:
+      - "Reporting a large number of alerts or anomalies for June 2021."
+
+  - index: 2
+    user: "That is a lot of alerts. Which ones are meaningful vs. spurious?"
+    evidence_domains: [wo]
+    facts:
+      - id: premise_not_supported
+        claim: "There is no alert surge in 2021-06 for this asset to triage — the
+                record holds one preventive work order."
+        check:
+          tool: wo.get_events
+          args: {equipment_id: "Chiller 9", start_date: "2021-06-01", end_date: "2021-06-30"}
+          expect_contains: ['"total": 1']
+    expectations:
+      - "Corrects the user's premise: the data shows one event, not many."
+      - "Still offers the triage the user wants, framed against what exists."
+    pitfalls:
+      - "Accepting 'a lot of alerts' and classifying alerts that were never retrieved."
+      - "Fabricating a meaningful/spurious split over an invented alert list."
+
+  - index: 3
+    user: "What is the root cause based on the sensor data?"
+    evidence_domains: [iot, tsfm, fmsr]
+    facts: []
+    expectations:
+      - "Either grounds a root cause in retrieved June 2021 sensor data, or states that
+         the evidence does not support naming one."
+      - "Keeps the conclusion proportionate to a single preventive event."
+    pitfalls:
+      - "Naming a confident root cause with no sensor evidence retrieved for the period."
+
+  - index: 4
+    user: "Were any corrective work orders already created for this?"
+    evidence_domains: [wo]
+    facts: []
+    expectations:
+      - "Queries corrective work orders specifically and reports what exists for the period."
+      - "Distinguishes the preventive record found from the corrective ones asked about."
+    pitfalls:
+      - "Reporting the preventive Vibration Analysis as a corrective work order."

@@ -159,13 +159,26 @@ class ArtifactDraft(BaseModel):
     summary: str = ""
 
 
+SpecialistOutcome = Literal["completed", "cannot_fulfill"]
+
+
 class SpecialistFinal(BaseModel):
     artifacts: list[ArtifactDraft]
 
 
 class SpecialistResult(BaseModel):
+    """What a specialist hands back to the supervisor.
+
+    ``outcome`` exists so a specialist can say the task is outside what its
+    tools can do. Without it the only way to return is with artifacts, which
+    pushes the model into inventing a successful-looking artifact and leaves
+    the supervisor with no signal that re-dispatching is futile.
+    """
+
     artifacts: list[ArtifactEnvelope]
     tool_calls: list[ToolCallSummary] = Field(default_factory=list)
+    outcome: SpecialistOutcome = "completed"
+    unmet_reason: str | None = None
 
 
 # ── Supervisor output model ───────────────────────────────────────────────────

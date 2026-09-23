@@ -54,8 +54,14 @@ BEHAVIOR_LOG_DIR = REPO_ROOT / "logs" / "supervisor_specialist"
 BASE_ENV_FILE = REPO_ROOT / ".env"
 PROFILING_ENV_FILE = REPO_ROOT / ".env.profiling"
 
-PER_TURN_TIMEOUT = 360    # seconds
-PER_DIALOG_TIMEOUT = 1500  # seconds (25 min hard cap)
+#: Measured over 75 turns / 20 dialogues on gpt-5.6-luna and gpt-4o-mini:
+#: a turn ran 44s at the median, 285s at p90 and 793s at the longest; a whole
+#: dialogue ran 314s at the median and 1154s at the longest. The previous
+#: 360s/1500s left almost no headroom above those maxima, and three of sixteen
+#: scenarios were cut off mid-dialogue with the work discarded. Reasoning models
+#: spend far longer per turn than the defaults were originally sized for.
+PER_TURN_TIMEOUT = 1200    # seconds
+PER_DIALOG_TIMEOUT = 5400  # seconds (90 min hard cap)
 
 PROFILE_ENV_KEYS = (
     "LANGCHAIN_API_KEY",
@@ -405,6 +411,29 @@ def _make_child_env(metrics_path: pathlib.Path) -> dict[str, str]:
 
 # ── subprocess helpers ────────────────────────────────────────────────────────
 
+#: A real REPL prompt is followed by silence, because the child is blocked on
+#: stdin. Give the stream this long to prove otherwise.
+_PROMPT_IDLE_S = 1.5
+
+
+async def _prompt_confirmed(stream: asyncio.StreamReader, buf: bytearray) -> bool:
+    """Distinguish the REPL prompt from a markdown blockquote in an answer.
+
+    A line such as "> **Chiller 9: possible fouling**" ends with the same three
+    bytes as the prompt ("\n> "). Matching on those alone made the harness think
+    a turn had finished while the model was still printing it, so it ran ahead,
+    closed stdin early and lost the final turn's answer.
+    """
+    try:
+        extra = await asyncio.wait_for(stream.read(1), timeout=_PROMPT_IDLE_S)
+    except asyncio.TimeoutError:
+        return True  # nothing followed: genuine prompt
+    if not extra:
+        return True  # EOF
+    buf.extend(extra)  # more text followed: it was blockquote markup
+    return False
+
+
 async def _read_until_prompt(reader: asyncio.StreamReader, timeout: float) -> str:
     """
     Read stdout until the CLI's '> ' input prompt appears or until EOF.
@@ -443,7 +472,7 @@ async def _read_until_prompt(reader: asyncio.StreamReader, timeout: float) -> st
         last_data_at = asyncio.get_event_loop().time()
         buf.extend(chunk)
 
-        if buf.endswith(b"\n> "):
+        if buf.endswith(b"\n> ") and await _prompt_confirmed(reader, buf):
             del buf[-3:]
             break
 
@@ -521,16 +550,17 @@ async def run_dialog(
     existing_logs = set(BEHAVIOR_LOG_DIR.glob("case_*.jsonl"))
     dialog_start = time.monotonic()
 
+    stderr_fh = open(stderr_path, "wb")
+    proc: asyncio.subprocess.Process | None = None
     try:
-        with open(stderr_path, "wb") as stderr_fh:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=stderr_fh,
-                cwd=REPO_ROOT,
-                env=child_env,
-            )
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=stderr_fh,
+            cwd=REPO_ROOT,
+            env=child_env,
+        )
 
         for i, turn_text in enumerate(turns):
             turn_start = time.monotonic()
@@ -599,6 +629,17 @@ async def run_dialog(
     except Exception as exc:  # noqa: BLE001
         result.update(status="crashed", error=str(exc))
         print(f"  ERROR: {exc}")
+    finally:
+        # The dialog-level asyncio.wait_for() cancels this coroutine on its hard
+        # deadline.  CancelledError bypasses ``except Exception``, so cleanup
+        # belongs in finally to prevent orphaned children and open log handles.
+        if proc is not None and proc.returncode is None:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+        stderr_fh.close()
 
     # Finalize.
     total = round(time.monotonic() - dialog_start, 2)

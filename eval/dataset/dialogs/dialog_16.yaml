@@ -1,0 +1,65 @@
+id: 16
+title: Load-Dependent Efficiency Degradation & Refrigerant Loss Diagnosis
+category: fault_diagnosis
+reference_date: "2016-09-01"
+site: MAIN
+assets_named_by_user: []
+
+data_caveats:
+  - "For Chiller 3 in August 2016 only two load bands carry data: 40-60% (n=912,
+     mean 0.5461 kW/ton) and 60-80% (n=719, mean 0.5502). There is no data above 80%
+     load at all, and the two available bands differ by under 0.005 kW/ton. The premise
+     'efficiency drops specifically at high load' cannot be confirmed from this data."
+  - "The user says 'our chiller' without naming one; site MAIN has four."
+
+turns:
+  - index: 1
+    user: "Our chiller at Site MAIN has been flagging efficiency issues, but only during our afternoon peak load periods. Can you investigate?"
+    evidence_domains: [iot]
+    facts:
+      - id: load_bands_incomplete
+        claim: "Aug 2016 Chiller 3: only the 40-60% and 60-80% load bands have data
+                (0.5461 vs 0.5502 kW/ton); no samples above 80% load."
+        check:
+          tool: iot.history_csv
+          args: {site_name: MAIN, asset_id: "Chiller 3", start: "2016-08-01T00:00:00", final: "2016-09-01T00:00:00"}
+          fn: august_2016_load_bins_incomplete
+    expectations:
+      - "Establishes which asset(s) are in scope rather than assuming one."
+      - "Analyses efficiency against load, not against time alone."
+      - "States that the available load range does not reach the 'peak load' band the
+         user describes."
+    pitfalls:
+      - "Confirming a high-load efficiency problem when no data above 80% load exists."
+      - "Silently picking one chiller as the subject."
+
+  - index: 2
+    user: "That load pattern is interesting. What is causing the efficiency to drop specifically at high loads?"
+    evidence_domains: [iot, fmsr]
+    facts: []
+    expectations:
+      - "Challenges or qualifies the premise: the observed bands differ by under
+         0.005 kW/ton, which does not establish a load-dependent drop."
+      - "Any mechanism proposed is tied to evidence, not asserted."
+    pitfalls:
+      - "Explaining the cause of a pattern that the data has not established."
+
+  - index: 3
+    user: "Can you validate whether it is more likely fouling or refrigerant loss?"
+    evidence_domains: [iot, fmsr]
+    facts: []
+    expectations:
+      - "Names what would discriminate the two hypotheses in terms of specific channels."
+      - "Reports which of those channels are actually available for this period."
+    pitfalls:
+      - "Declaring one hypothesis validated without the discriminating evidence."
+
+  - index: 4
+    user: "So the system is not certain? What should I inspect first?"
+    evidence_domains: [fmsr, wo]
+    facts: []
+    expectations:
+      - "Acknowledges the uncertainty plainly rather than retreating into a confident answer."
+      - "Prioritises an inspection that would most cheaply discriminate the hypotheses."
+    pitfalls:
+      - "Responding to the uncertainty challenge by asserting a definite cause."

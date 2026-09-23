@@ -1,0 +1,74 @@
+id: 6
+title: Knowledge Discovery & Onboarding
+category: knowledge_discovery
+reference_date: "2020-07-01"
+site: MAIN
+assets_named_by_user: ["Chiller 6"]
+
+data_caveats:
+  - "This dialogue is pure capability discovery. No anomaly detection, forecasting or
+     diagnosis is asked for; running them is unnecessary work."
+  - "Chiller 6's sensor set is not identical to the others: it carries 'Condenser Water
+     Return To Tower Temperature' where Chillers 3/4/9 carry 'Condenser Water Supply To
+     Chiller Temperature'. A generic per-chiller list would be wrong here."
+
+turns:
+  - index: 1
+    user: "I am new to this system. What sites and assets are available for monitoring?"
+    evidence_domains: [iot]
+    facts:
+      - id: site_and_assets
+        claim: "Site MAIN holds four chillers: Chiller 3, Chiller 4, Chiller 6, Chiller 9."
+        check:
+          tool: iot.assets
+          args: {site_name: MAIN}
+          expect_contains: ["Chiller 3", "Chiller 4", "Chiller 6", "Chiller 9"]
+    expectations:
+      - "Lists the sites and, for each, the assets actually returned by the inventory."
+    pitfalls:
+      - "Listing assets or sites not present in the inventory."
+
+  - index: 2
+    user: "What sensors does Chiller 6 have, and what kinds of analysis can I run on the data?"
+    evidence_domains: [iot, tsfm]
+    facts:
+      - id: chiller6_sensors
+        claim: "Chiller 6 exposes 10 sensors, including Condenser Water Return To Tower
+                Temperature — which Chillers 3/4/9 do not have."
+        check:
+          tool: iot.sensors
+          args: {site_name: MAIN, asset_id: "Chiller 6"}
+          expect_contains:
+            - "Chiller 6 Condenser Water Return To Tower Temperature"
+            - "Chiller 6 Chiller Efficiency"
+            - "Chiller 6 Tonnage"
+      - id: tsfm_capabilities
+        claim: "TSFM advertises anomaly detection, multivariate forecasting and
+                forecasting fine-tuning as available task types."
+        check:
+          tool: tsfm.get_ai_tasks
+          args: {}
+          expect_contains: ["tsfm_integrated_tsad", "tsfm_forecasting", "tsfm_forecasting_finetune"]
+    expectations:
+      - "Gives Chiller 6's actual sensor list, not a generic chiller sensor set."
+      - "Names the analysis types the TSFM server actually advertises."
+    pitfalls:
+      - "Listing 'Condenser Water Supply To Chiller Temperature' for Chiller 6 — that
+         sensor belongs to the other three chillers."
+      - "Claiming analysis capabilities the TSFM task list does not include."
+
+  - index: 3
+    user: "What failure modes can be detected using these sensors?"
+    evidence_domains: [fmsr]
+    facts:
+      - id: chiller6_modes_and_mapping
+        claim: "FMSR returns 7 failure modes for Chiller 6 and can map them to sensors."
+        check:
+          tool: fmsr.get_failure_modes
+          args: {asset_name: "Chiller 6"}
+          expect_contains: ["Condenser Water side fouling", "Compressor Overheating"]
+    expectations:
+      - "Draws failure modes from FMSR and ties them to the sensors listed in turn 2."
+    pitfalls:
+      - "Inventing failure modes, or asserting sensor-to-mode links without consulting
+         the mapping tool."
