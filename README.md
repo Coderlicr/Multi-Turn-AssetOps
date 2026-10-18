@@ -204,7 +204,7 @@ uv run python eval/run_eval.py \
   --model-id watsonx/meta-llama/llama-4-maverick-17b-128e-instruct-fp8
 ```
 
-The harness writes per-dialog responses, LLM/tool/CouchDB metrics, behavior logs, and `summary.json` under `eval/results/<run-id>/`. Profiling integrations for Weights & Biases and LangSmith are optional; configuration is documented in [PROFILING.md](PROFILING.md).
+The harness writes per-dialog responses, LLM/tool/CouchDB metrics, behavior logs, and `summary.json` under `eval/results/<run-id>/`. Profiling integrations for Weights & Biases and LangSmith are optional; configuration is documented in [PROFILING.md](docs/PROFILING.md).
 
 Dedicated entry points are also available for the architecture-specific evaluation runners:
 
@@ -226,9 +226,10 @@ uv run python eval/run_supervisor_specialist_eval.py
 │   ├── couchdb/                       # Local CouchDB setup and sample data
 │   ├── llm/                           # LiteLLM backend and provider routing
 │   └── servers/                       # MCP servers: IoT, WO, TSFM, FMSR, utilities, vibration
-├── DESIGN.md                          # Scenario and system design notes
-├── INSTRUCTIONS.md                    # Detailed usage documentation
-├── PROFILING.md                       # Metrics and profiling setup
+├── docs/
+│   ├── DESIGN.md                      # Scenario and system design notes
+│   ├── INSTRUCTIONS.md                # Detailed usage documentation
+│   └── PROFILING.md                   # Metrics and profiling setup
 └── pyproject.toml                     # Dependencies and CLI entry points
 ```
 

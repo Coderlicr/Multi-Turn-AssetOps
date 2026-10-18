@@ -1,5 +1,5 @@
 """
-16 evaluation scenarios derived from DESIGN_annotated.md (master branch).
+16 multi-turn evaluation scenarios for industrial asset operations.
 
 Each scenario has:
   id            : dialog number (1–16)

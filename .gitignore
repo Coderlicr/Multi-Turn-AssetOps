@@ -207,16 +207,16 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Local files
+docs.local/
 .DS_Store
 .vscode
 .claude
 
-tsad_model_save/
-
 # Data and Logs
+logs/
 *.json
 *.jsonl
-/logs
 
 # Testing Scripts
 tests/
@@ -231,5 +231,3 @@ eval/results/
 
 # TSFM model artifacts generated during eval runs
 tuned_models/
-
-docs/
