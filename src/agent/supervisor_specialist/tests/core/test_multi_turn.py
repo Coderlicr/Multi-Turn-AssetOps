@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import json
 import re
 
@@ -281,66 +280,19 @@ async def test_followup_can_answer_from_memory_without_new_tools(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_cli_multi_turn_repl_runs_until_quit(monkeypatch, capsys):
-    from agent.supervisor_specialist import cli
-    import agent.supervisor_specialist.runner as runner_mod
-    import llm.litellm as litellm_mod
-
-    created_kwargs = {}
-
-    class DummyRunner:
-        def __init__(self, **kwargs) -> None:
-            created_kwargs.update(kwargs)
-            self.questions: list[str] = []
-
-        async def run_turn(self, question: str) -> str:
-            self.questions.append(question)
-            return f"answer:{question}"
-
-    monkeypatch.setattr(litellm_mod, "LiteLLMBackend", lambda model_id: object())
-    monkeypatch.setattr(runner_mod, "SupervisorSpecialistRunner", DummyRunner)
-    inputs = iter(["second turn", "quit"])
-    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
-
-    await cli._run(
-        argparse.Namespace(
-            question="first turn",
-            model_id="fake/model",
-            max_steps=3,
-            no_stream=True,
-            no_log=True,
-            log_dir=None,
-            reference_date="2020-06-20",
-            multi_turn=True,
-            parallel=True,
-            reuse_mode="none",
-            max_repeat_dispatch=2,
-        )
-    )
-
-    out = capsys.readouterr().out
-    assert "answer:first turn" in out
-    assert "answer:second turn" in out
-    assert created_kwargs["parallel"] is True
-    assert created_kwargs["reuse_mode"] == "none"
-    assert created_kwargs["max_repeat_dispatch"] == 2
-
-
-@pytest.mark.anyio
 @pytest.mark.parametrize("parallel", [False, True])
-@pytest.mark.parametrize("reuse_mode", ["full", "none", "stateless"])
-async def test_reuse_modes_work_with_parallel_execution(tmp_path, parallel, reuse_mode):
+async def test_multi_turn_reuses_evidence_with_parallel_execution(tmp_path, parallel):
     runner = SupervisorSpecialistRunner(
         llm=FakeLLM(), mcp_tools=FakeMCPToolClient(), quiet=True,
         log_dir=tmp_path, reference_date="2020-06-20", max_steps=5,
-        parallel=parallel, reuse_mode=reuse_mode,
+        parallel=parallel,
     )
     await runner.run_turn("The temperature of our chiller at Site MAIN seems unusually high lately.")
     assert runner.last_dialog_state["conversation_memory"].active_artifact_ids == ["artifact_dc_001"]
     await runner.run_turn("What did you find?")
     memory = runner.last_dialog_state["conversation_memory"]
-    assert memory.active_artifact_ids == (["artifact_dc_001"] if reuse_mode == "full" else [])
-    assert len(memory.recent_turns) == (1 if reuse_mode == "stateless" else 2)
+    assert memory.active_artifact_ids == ["artifact_dc_001"]
+    assert len(memory.recent_turns) == 2
 
 
 @pytest.mark.anyio

@@ -220,6 +220,8 @@ tsad_model_save/
 
 # Testing Scripts
 tests/
+# Keep the supervisor-specialist unit tests under version control.
+!src/agent/supervisor_specialist/tests/
 
 # WandB local run data
 wandb/
@@ -229,3 +231,5 @@ eval/results/
 
 # TSFM model artifacts generated during eval runs
 tuned_models/
+
+docs/

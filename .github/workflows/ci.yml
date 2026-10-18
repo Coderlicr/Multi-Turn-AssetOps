@@ -28,4 +28,4 @@ jobs:
         run: uv sync --locked --dev
 
       - name: Run unit tests
-        run: uv run --no-sync pytest src/agent/supervisor_specialist/test_multi_turn.py -q
+        run: uv run --no-sync pytest src/agent/supervisor_specialist/tests -q
